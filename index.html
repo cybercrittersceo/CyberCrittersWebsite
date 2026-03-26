@@ -2,101 +2,190 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>CyberCritters | News, Security Updates & Practical Guidance</title>
+  <title>CyberCritters | News, Security Updates &amp; Practical Guidance</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta
     name="description"
     content="CyberCritters delivers news, security updates, and practical guidance to keep all critters—and their devices—safe and connected."
   />
-  <link rel="stylesheet" href="styles.css" />
+  <script>
+    document.documentElement.classList.add("js");
+  </script>
+  <link rel="stylesheet" href="styles.css?v=20260326bannerwindbehind1" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Space+Grotesk:wght@500;700&amp;display=swap"
     rel="stylesheet"
   />
 </head>
 <body>
-  <!-- NAVIGATION -->
-  <header class="navbar">
-    <div class="container nav-inner">
-      <div class="nav-brand" aria-label="CyberCritters">
-        <img src="images/cyber-logo.png" alt="CyberCritters logo" />
-      </div>
-      <nav class="nav-links">
-        <a href="#home">Home</a>
-        <a href="#history">History</a>
-        <a href="#team">Team</a>
-        <a href="#faq">FAQ</a>
-        <a href="#blog">Blog and Research</a>
-      </nav>
-    </div>
+  <header class="site-header">
+    <button class="menu-toggle hamburger" type="button" aria-expanded="false" aria-controls="site-menu" aria-label="Open navigation menu">
+      <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <path
+          class="line line-top-bottom"
+          d="M27 10 13 10C10.8 10 9 8.2 9 6 9 3.5 10.8 2 13 2 15.2 2 17 3.8 17 6L17 26C17 28.2 18.8 30 21 30 23.2 30 25 28.2 25 26 25 23.8 23.2 22 21 22L7 22"
+        ></path>
+        <path class="line" d="M7 16 27 16"></path>
+      </svg>
+    </button>
+
+    <div class="nav-backdrop" data-menu-close></div>
+
+    <nav id="site-menu" class="nav-links" aria-label="Primary">
+      <a href="#home" data-menu-link>Home</a>
+      <a href="history.html" data-menu-link>History</a>
+      <a href="team.html" data-menu-link>Team</a>
+      <a href="faq.html" data-menu-link>FAQ</a>
+      <a href="#blog" data-menu-link>Blog and Research</a>
+    </nav>
   </header>
 
-  <main id="home">
-    <!-- HERO BANNER -->
-    <section class="hero">
-      <div class="container hero-inner"></div>
+  <main class="page-shell">
+    <section id="home" class="hero-section">
+      <figure class="hero-banner-frame">
+        <img src="images/contact-banner.png" alt="CyberCritters banner" class="hero-banner-image" />
+        <div class="hero-banner-motion" aria-hidden="true">
+          <span class="hero-banner-wind hero-banner-wind--dog hero-banner-wind--primary"></span>
+          <span class="hero-banner-wind hero-banner-wind--dog hero-banner-wind--secondary"></span>
+          <span class="hero-banner-wind hero-banner-wind--dog hero-banner-wind--accent"></span>
+          <span class="hero-banner-glow hero-banner-glow--dog"></span>
+        </div>
+      </figure>
     </section>
 
-    <!-- MISSION BANNER (yellow) - full width -->
-    <section class="banner-title-section">
-      <img src="images/mission-banner.png" alt="Mission of the project: Delivering news, security updates, and practical guidance to help keep all critters—and their devices—safe and connected" class="mission-banner-img" />
+    <section id="history" class="mission-section">
+      <div class="container mission-shell">
+        <div class="mission-header">
+          <img src="images/cyber-logo.png" alt="" class="hero-logo" aria-hidden="true" />
+          <p class="hero-label">Mission of the project:</p>
+        </div>
+
+        <p
+          class="hero-mission mission-text"
+          data-full-text="Delivering news, security updates, and practical guidance to help keep all critters—and their devices—safe and connected."
+          aria-label="Delivering news, security updates, and practical guidance to help keep all critters—and their devices—safe and connected."
+        >
+          Delivering news, security updates, and practical guidance to help keep all critters—and their devices—safe and connected.
+        </p>
+      </div>
     </section>
 
-    <!-- OUR SERVICES - 2x2 Grid -->
     <section id="services" class="services-section">
       <div class="container">
-        <div class="services-grid-2x2">
-          <article class="service-card">
-            <div class="service-image-wrapper">
-              <img src="images/News.png" alt="News" class="service-image" onerror="this.src='https://placehold.co/200x200/20b2aa/ffffff?text=News'" />
+        <div class="services-grid">
+          <article id="blog" class="service-card service-card-news" tabindex="0">
+            <div class="service-card-face service-card-front">
+              <div class="service-card-front-copy">
+                <span class="service-card-index">01</span>
+                <h2 id="service-news-title">News</h2>
+                <p class="service-card-front-summary">
+                  Briefings that turn digital developments into useful takeaways.
+                </p>
+              </div>
+              <div class="service-image-wrapper">
+                <img src="images/News.png" alt="News" class="service-image" />
+              </div>
             </div>
-            <h3>News</h3>
-            <p>
-              This effort focuses on delivering timely information to help keep all critters and their devices safe and connected.
-            </p>
+            <div class="service-card-face service-card-back" aria-labelledby="service-news-title">
+              <div class="service-card-copy">
+                <span class="service-card-copy-label">Newsroom</span>
+                <h3 class="service-card-copy-title">Fast, readable reporting</h3>
+                <p>
+                  This effort focuses on delivering timely information to help keep all critters and their
+                  devices safe and connected.
+                </p>
+              </div>
+            </div>
           </article>
 
-          <article class="service-card">
-            <div class="service-image-wrapper">
-              <img src="images/Security.png" alt="Security Updates" class="service-image" onerror="this.src='https://placehold.co/200x200/20b2aa/ffffff?text=Security'" />
+          <article class="service-card service-card-security" tabindex="0">
+            <div class="service-card-face service-card-front">
+              <div class="service-card-front-copy">
+                <span class="service-card-index">02</span>
+                <h2 id="service-security-title">Security Updates</h2>
+                <p class="service-card-front-summary">
+                  Critical alerts and platform changes worth acting on quickly.
+                </p>
+              </div>
+              <div class="service-image-wrapper">
+                <img src="images/Security.png" alt="Security Updates" class="service-image" />
+              </div>
             </div>
-            <h3>Security Updates</h3>
-            <p>
-              The initiative provides critical technical updates to ensure that infrastructure and devices remain secure and operational.
-            </p>
+            <div class="service-card-face service-card-back" aria-labelledby="service-security-title">
+              <div class="service-card-copy">
+                <span class="service-card-copy-label">Alerts</span>
+                <h3 class="service-card-copy-title">Updates that matter</h3>
+                <p>
+                  The initiative provides critical technical updates to ensure that infrastructure and
+                  devices remain secure and operational.
+                </p>
+              </div>
+            </div>
           </article>
 
-          <article class="service-card">
-            <div class="service-image-wrapper">
-              <img src="images/Practical%20Guidance.png" alt="Practical Guidance" class="service-image" onerror="this.src='https://placehold.co/200x200/20b2aa/ffffff?text=Guidance'" />
+          <article class="service-card service-card-guidance" tabindex="0">
+            <div class="service-card-face service-card-front">
+              <div class="service-card-front-copy">
+                <span class="service-card-index">03</span>
+                <h2 id="service-guidance-title">Practical Guidance</h2>
+                <p class="service-card-front-summary">
+                  Clear next steps for safer homes, devices, and daily habits.
+                </p>
+              </div>
+              <div class="service-image-wrapper">
+                <img src="images/Practical Guidance.png" alt="Practical Guidance" class="service-image" />
+              </div>
             </div>
-            <h3>Practical Guidance</h3>
-            <p>
-              CyberCritters offers actionable advice to help users maintain the safety and stability of their homes and technology.
-            </p>
+            <div class="service-card-face service-card-back" aria-labelledby="service-guidance-title">
+              <div class="service-card-copy">
+                <span class="service-card-copy-label">How-to</span>
+                <h3 class="service-card-copy-title">Advice you can use</h3>
+                <p>
+                  CyberCritters offers actionable advice to help users maintain the safety and stability of
+                  their homes and technology.
+                </p>
+              </div>
+            </div>
           </article>
 
-          <article class="service-card">
-            <div class="service-image-wrapper">
-              <img src="images/Awareness.png" alt="Awareness" class="service-image" onerror="this.src='https://placehold.co/200x200/20b2aa/ffffff?text=Awareness'" />
+          <article class="service-card service-card-awareness" tabindex="0">
+            <div class="service-card-face service-card-front">
+              <div class="service-card-front-copy">
+                <span class="service-card-index">04</span>
+                <h2 id="service-awareness-title">Awareness</h2>
+                <p class="service-card-front-summary">
+                  Community-focused education built to reduce risk and confusion.
+                </p>
+              </div>
+              <div class="service-image-wrapper">
+                <img src="images/Awareness.png" alt="Awareness" class="service-image" />
+              </div>
             </div>
-            <h3>Awareness</h3>
-            <p>
-              This outreach program is committed to bringing vital services and education to communities in need of stability and protection.
-            </p>
+            <div class="service-card-face service-card-back" aria-labelledby="service-awareness-title">
+              <div class="service-card-copy">
+                <span class="service-card-copy-label">Outreach</span>
+                <h3 class="service-card-copy-title">Education with reach</h3>
+                <p>
+                  This outreach program is committed to bringing vital services and education to communities
+                  in need of stability and protection.
+                </p>
+              </div>
+            </div>
           </article>
         </div>
       </div>
     </section>
+
   </main>
 
-  <!-- FOOTER / CONTACT SECTION -->
   <footer class="footer">
     <div class="container footer-inner">
-      <p class="footer-brand">CyberCritters</p>
-      <p class="footer-email-text">Email: CyberCrittersCEO@gmail.com</p>
+      <div class="footer-copy">
+        <p class="footer-brand">CyberCritters</p>
+        <p class="footer-email-text">Email: CyberCrittersCEO@gmail.com</p>
+      </div>
       <div class="social-links">
         <a href="https://discord.com/invite/C9W5WYwt" target="_blank" rel="noopener" aria-label="Discord">
           <img class="social-icon" src="images/Discord.png" alt="Discord" />
@@ -113,5 +202,6 @@
     </div>
   </footer>
 
+  <script src="site.js?v=20260325teamtv5"></script>
 </body>
 </html>
