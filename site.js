@@ -50,6 +50,8 @@ document.addEventListener("DOMContentLoaded", function () {
   initFaqSequence();
   initTeamScreen();
   initTiltedCards();
+  initBlogResearchPage();
+  initArticlePage();
 
   function initMissionTyping() {
     var missionText = document.querySelector(".hero-mission[data-full-text]");
@@ -398,4 +400,607 @@ document.addEventListener("DOMContentLoaded", function () {
       resetCard();
     });
   }
+
+  function initBlogResearchPage() {
+    var articlesFeed = document.querySelector("[data-articles-feed]");
+    var iggyFeed = document.querySelector("[data-iggy-feed]");
+    var articlesEmpty = document.querySelector("[data-articles-empty]");
+    var iggyEmpty = document.querySelector("[data-iggy-empty]");
+    var adminPanel = document.querySelector("[data-blog-admin-panel]");
+    var unlockForm = document.querySelector("[data-blog-unlock-form]");
+    var unlockInput = document.getElementById("blog-admin-password");
+    var adminFeedback = document.querySelector("[data-blog-admin-feedback]");
+    var composer = document.querySelector("[data-blog-composer]");
+    var lockButton = document.querySelector("[data-blog-lock]");
+    var articleForm = document.querySelector("[data-article-form]");
+    var tipForm = document.querySelector("[data-tip-form]");
+    var formFeedback = document.querySelector("[data-blog-form-feedback]");
+    var typeTabs = document.querySelectorAll("[data-post-type]");
+    var articlesStorageKey = "cybercritters_articles";
+    var iggyStorageKey = "cybercritters_iggy_tips";
+    var unlockKey = "cybercritters_blog_admin_unlocked";
+    var adminPassword = "Critters2026";
+    var canUseLocalStorage = supportsStorage("localStorage");
+    var canUseSessionStorage = supportsStorage("sessionStorage");
+    var fallbackArticles = [];
+    var fallbackTips = [];
+    var fallbackUnlocked = false;
+    var storedArticles;
+    var storedTips;
+    var activePostType = "article";
+    var dateFormatter =
+      typeof Intl !== "undefined" && Intl.DateTimeFormat
+        ? new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" })
+        : null;
+
+    if (!articlesFeed && !iggyFeed) {
+      return;
+    }
+
+    storedArticles = getStoredItems(articlesStorageKey, fallbackArticles, isValidArticle);
+    storedTips = getStoredItems(iggyStorageKey, fallbackTips, isValidTip);
+    renderArticles(storedArticles);
+    renderTips(storedTips);
+    syncAdminState();
+
+    // ── Type tabs ──
+    typeTabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        activePostType = tab.dataset.postType;
+        typeTabs.forEach(function (t) {
+          t.classList.toggle("is-active", t === tab);
+          t.setAttribute("aria-selected", t === tab ? "true" : "false");
+        });
+        if (articleForm) { articleForm.hidden = activePostType !== "article"; }
+        if (tipForm) { tipForm.hidden = activePostType !== "tip"; }
+        clearFeedback(formFeedback);
+      });
+    });
+
+    // ── Unlock ──
+    if (unlockForm) {
+      unlockForm.addEventListener("submit", function (event) {
+        var entered;
+        event.preventDefault();
+        entered = unlockInput ? unlockInput.value.trim() : "";
+
+        if (entered !== adminPassword) {
+          setFeedback(adminFeedback, "Password incorrect. Admin access is still locked.", "error");
+          return;
+        }
+
+        setUnlockedState(true);
+        syncAdminState();
+        unlockForm.reset();
+        clearFeedback(adminFeedback);
+        setFeedback(formFeedback, "Admin access unlocked.", "success");
+
+        var firstInput = composer ? composer.querySelector("input, textarea") : null;
+        if (firstInput) { firstInput.focus(); }
+      });
+    }
+
+    // ── Lock ──
+    if (lockButton) {
+      lockButton.addEventListener("click", function () {
+        setUnlockedState(false);
+        syncAdminState();
+        clearFeedback(formFeedback);
+        setFeedback(adminFeedback, "Admin access locked again.", "success");
+        if (unlockInput) { unlockInput.focus(); }
+      });
+    }
+
+    // ── Article form ──
+    if (articleForm) {
+      articleForm.addEventListener("submit", function (event) {
+        var formData, title, bodyText, imageFile;
+        event.preventDefault();
+
+        if (!getUnlockedState()) {
+          setFeedback(formFeedback, "Unlock the composer before publishing.", "error");
+          return;
+        }
+
+        formData = new FormData(articleForm);
+        title = normalizeText(formData.get("title"));
+        bodyText = normalizeBody(formData.get("body"));
+        imageFile = getImageFile(formData.get("image"));
+
+        if (!title || !bodyText) {
+          setFeedback(formFeedback, "Title and article body are required.", "error");
+          return;
+        }
+
+        clearFeedback(formFeedback);
+
+        preparePostImage(imageFile, title, function (error, imageData) {
+          var now, newArticle, next, saved;
+
+          if (error) { setFeedback(formFeedback, error, "error"); return; }
+
+          now = new Date();
+          newArticle = {
+            id: "article-" + now.getTime(),
+            title: title,
+            body: bodyText,
+            imageSrc: imageData ? imageData.src : "",
+            imageAlt: imageData ? imageData.alt : "",
+            isoDate: now.toISOString().slice(0, 10),
+            dateLabel: formatDate(now)
+          };
+
+          next = [newArticle].concat(storedArticles);
+          saved = saveStoredItems(articlesStorageKey, next, fallbackArticles);
+
+          if (!saved) {
+            setFeedback(formFeedback, imageData ? "Could not save — try a smaller image." : "Could not save in this browser.", "error");
+            return;
+          }
+
+          storedArticles = next;
+          articlesFeed.insertBefore(createArticleCard(newArticle), articlesFeed.firstChild);
+          syncEmpty();
+          articleForm.reset();
+          setFeedback(formFeedback, canUseLocalStorage ? "Article published." : "Article added for this visit only.", "success");
+        });
+      });
+    }
+
+    // ── Iggy Tip form ──
+    if (tipForm) {
+      tipForm.addEventListener("submit", function (event) {
+        var formData, caption, imageFile;
+        event.preventDefault();
+
+        if (!getUnlockedState()) {
+          setFeedback(formFeedback, "Unlock the composer before posting.", "error");
+          return;
+        }
+
+        formData = new FormData(tipForm);
+        caption = normalizeText(formData.get("caption"));
+        imageFile = getImageFile(formData.get("image"));
+
+        if (!caption) {
+          setFeedback(formFeedback, "A caption is required.", "error");
+          return;
+        }
+
+        if (!imageFile) {
+          setFeedback(formFeedback, "An image is required for Iggy Tips.", "error");
+          return;
+        }
+
+        clearFeedback(formFeedback);
+
+        preparePostImage(imageFile, caption, function (error, imageData) {
+          var now, newTip, next, saved;
+
+          if (error) { setFeedback(formFeedback, error, "error"); return; }
+
+          if (!imageData) {
+            setFeedback(formFeedback, "Image could not be processed.", "error");
+            return;
+          }
+
+          now = new Date();
+          newTip = {
+            id: "tip-" + now.getTime(),
+            caption: caption,
+            imageSrc: imageData.src,
+            imageAlt: imageData.alt,
+            isoDate: now.toISOString().slice(0, 10),
+            dateLabel: formatDate(now)
+          };
+
+          next = [newTip].concat(storedTips);
+          saved = saveStoredItems(iggyStorageKey, next, fallbackTips);
+
+          if (!saved) {
+            setFeedback(formFeedback, "Could not save — try a smaller image.", "error");
+            return;
+          }
+
+          storedTips = next;
+          iggyFeed.insertBefore(createTipCard(newTip), iggyFeed.firstChild);
+          syncEmpty();
+          tipForm.reset();
+          setFeedback(formFeedback, canUseLocalStorage ? "Tip posted." : "Tip added for this visit only.", "success");
+        });
+      });
+    }
+
+    // ── Render helpers ──
+    function renderArticles(articles) {
+      var fragment;
+      if (!articles.length) { syncEmpty(); return; }
+      fragment = document.createDocumentFragment();
+      articles.forEach(function (a) { fragment.appendChild(createArticleCard(a)); });
+      articlesFeed.appendChild(fragment);
+      syncEmpty();
+    }
+
+    function renderTips(tips) {
+      var fragment;
+      if (!tips.length) { syncEmpty(); return; }
+      fragment = document.createDocumentFragment();
+      tips.forEach(function (t) { fragment.appendChild(createTipCard(t)); });
+      iggyFeed.appendChild(fragment);
+      syncEmpty();
+    }
+
+    function syncEmpty() {
+      if (articlesEmpty) { articlesEmpty.hidden = articlesFeed.children.length > 0; }
+      if (iggyEmpty) { iggyEmpty.hidden = iggyFeed.children.length > 0; }
+    }
+
+    function createArticleCard(post) {
+      var article = document.createElement("article");
+      var meta = document.createElement("div");
+      var date = document.createElement("time");
+      var titleEl;
+      var image;
+      var deleteBtn;
+      var readMoreLink;
+      var articleUrl = post.id ? "article.html?id=" + encodeURIComponent(post.id) : null;
+
+      article.className = "blog-post-card blog-post-card--local";
+
+      meta.className = "blog-post-meta";
+      meta.appendChild(createChip("blog-post-type", "Article"));
+
+      date.className = "blog-post-date";
+      date.textContent = post.dateLabel;
+      if (post.isoDate) { date.setAttribute("datetime", post.isoDate); }
+      meta.appendChild(date);
+
+      if (post.imageSrc) { image = createBlogPostImage(post); }
+
+      if (articleUrl) {
+        titleEl = document.createElement("a");
+        titleEl.href = articleUrl;
+        titleEl.className = "blog-post-title blog-post-title-link";
+      } else {
+        titleEl = document.createElement("h3");
+        titleEl.className = "blog-post-title";
+      }
+      titleEl.textContent = post.title;
+
+      if (articleUrl) {
+        readMoreLink = document.createElement("a");
+        readMoreLink.href = articleUrl;
+        readMoreLink.className = "blog-read-more";
+        readMoreLink.textContent = "Read full article \u2192";
+      }
+
+      deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "blog-delete-btn";
+      deleteBtn.textContent = "Delete article";
+      deleteBtn.setAttribute("aria-label", "Delete article: " + post.title);
+      deleteBtn.style.display = getUnlockedState() ? "" : "none";
+      deleteBtn.addEventListener("click", function () {
+        if (!getUnlockedState()) { return; }
+        if (!window.confirm("Delete \"" + post.title + "\"? This cannot be undone.")) { return; }
+        storedArticles = storedArticles.filter(function (a) { return a !== post; });
+        saveStoredItems(articlesStorageKey, storedArticles, fallbackArticles);
+        if (article.parentNode) { article.parentNode.removeChild(article); }
+        syncEmpty();
+      });
+
+      var cardFooter = document.createElement("div");
+      cardFooter.className = "blog-card-footer";
+      if (readMoreLink) { cardFooter.appendChild(readMoreLink); }
+      cardFooter.appendChild(deleteBtn);
+
+      article.appendChild(meta);
+      if (image) { article.appendChild(image); }
+      article.appendChild(titleEl);
+      article.appendChild(cardFooter);
+
+      return article;
+    }
+
+    function createTipCard(tip) {
+      var card = document.createElement("figure");
+      var img = document.createElement("img");
+      var caption = document.createElement("figcaption");
+      var deleteBtn;
+
+      card.className = "iggy-tip-card";
+      img.className = "iggy-tip-image";
+      img.src = tip.imageSrc;
+      img.alt = tip.imageAlt || tip.caption;
+      img.loading = "lazy";
+      img.decoding = "async";
+
+      caption.className = "iggy-tip-caption";
+      caption.textContent = tip.caption;
+
+      deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "blog-delete-btn";
+      deleteBtn.textContent = "Delete tip";
+      deleteBtn.setAttribute("aria-label", "Delete tip: " + tip.caption);
+      deleteBtn.style.display = getUnlockedState() ? "" : "none";
+      deleteBtn.addEventListener("click", function () {
+        if (!getUnlockedState()) { return; }
+        if (!window.confirm("Delete tip \"" + tip.caption + "\"? This cannot be undone.")) { return; }
+        storedTips = storedTips.filter(function (t) { return t !== tip; });
+        saveStoredItems(iggyStorageKey, storedTips, fallbackTips);
+        if (card.parentNode) { card.parentNode.removeChild(card); }
+        syncEmpty();
+      });
+
+      card.appendChild(img);
+      card.appendChild(caption);
+      card.appendChild(deleteBtn);
+
+      return card;
+    }
+
+    function createBlogPostImage(post) {
+      var media = document.createElement("figure");
+      var image = document.createElement("img");
+      media.className = "blog-post-media";
+      image.className = "blog-post-image";
+      image.src = post.imageSrc;
+      image.alt = post.imageAlt || post.title;
+      image.loading = "lazy";
+      image.decoding = "async";
+      media.appendChild(image);
+      return media;
+    }
+
+    function createChip(className, text) {
+      var chip = document.createElement("span");
+      chip.className = className;
+      chip.textContent = text;
+      return chip;
+    }
+
+    // ── Storage helpers ──
+    function supportsStorage(storageName) {
+      var storage;
+      var probe = "__cybercritters_probe__";
+      try {
+        storage = window[storageName];
+        storage.setItem(probe, probe);
+        storage.removeItem(probe);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function getStoredItems(key, fallback, validator) {
+      var raw, parsed;
+      if (!canUseLocalStorage) { return fallback.slice(); }
+      try {
+        raw = window.localStorage.getItem(key);
+        parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) { return []; }
+        return parsed.filter(validator);
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function saveStoredItems(key, items, fallback) {
+      if (!canUseLocalStorage) {
+        fallback.length = 0;
+        items.forEach(function (i) { fallback.push(i); });
+        return true;
+      }
+      try {
+        window.localStorage.setItem(key, JSON.stringify(items));
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function isValidArticle(post) {
+      return post && typeof post.title === "string" && typeof post.body === "string" && typeof post.dateLabel === "string";
+    }
+
+    function isValidTip(tip) {
+      return tip && typeof tip.caption === "string" && typeof tip.imageSrc === "string" && typeof tip.dateLabel === "string";
+    }
+
+    // ── Utilities ──
+    function normalizeText(value) {
+      return String(value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function normalizeBody(value) {
+      return String(value || "").replace(/\r\n/g, "\n").trim();
+    }
+
+    function getImageFile(value) {
+      if (!value || typeof value !== "object") { return null; }
+      if (typeof value.name !== "string" || !value.name) { return null; }
+      if (typeof value.size === "number" && value.size <= 0) { return null; }
+      return value;
+    }
+
+    function preparePostImage(file, label, callback) {
+      var reader;
+      if (!file) { callback(null, null); return; }
+      if (typeof file.type === "string" && file.type.indexOf("image/") !== 0) {
+        callback("Choose an image file.", null); return;
+      }
+      if (typeof FileReader === "undefined") {
+        callback("This browser cannot read image files.", null); return;
+      }
+      reader = new FileReader();
+      reader.onload = function () {
+        var preview = new Image();
+        preview.onload = function () {
+          var result = resizeImageData(preview, file);
+          if (!result) { callback("Image could not be processed.", null); return; }
+          callback(null, { src: result, alt: label });
+        };
+        preview.onerror = function () { callback("Image could not be opened.", null); };
+        preview.src = String(reader.result || "");
+      };
+      reader.onerror = function () { callback("Image could not be read.", null); };
+      reader.readAsDataURL(file);
+    }
+
+    function resizeImageData(image, file) {
+      var canvas, context;
+      var width = image.naturalWidth || image.width;
+      var height = image.naturalHeight || image.height;
+      var scale;
+      var type = file && file.type === "image/png" ? "image/png" : "image/jpeg";
+      if (!width || !height) { return ""; }
+      scale = Math.min(1, 1280 / width, 960 / height);
+      width = Math.max(1, Math.round(width * scale));
+      height = Math.max(1, Math.round(height * scale));
+      canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      context = canvas.getContext("2d");
+      if (!context) { return ""; }
+      if (type === "image/jpeg") { context.fillStyle = "#ffffff"; context.fillRect(0, 0, width, height); }
+      context.drawImage(image, 0, 0, width, height);
+      try {
+        return type === "image/png" ? canvas.toDataURL(type) : canvas.toDataURL(type, 0.84);
+      } catch (e) { return ""; }
+    }
+
+    function formatDate(date) {
+      return dateFormatter ? dateFormatter.format(date) : date.toDateString();
+    }
+
+    function syncAdminState() {
+      var isUnlocked = getUnlockedState();
+      var deleteBtns = document.querySelectorAll(".blog-delete-btn");
+      if (!adminPanel || !composer) { return; }
+      adminPanel.classList.toggle("is-unlocked", isUnlocked);
+      composer.hidden = !isUnlocked;
+      deleteBtns.forEach(function (btn) { btn.style.display = isUnlocked ? "" : "none"; });
+    }
+
+    function getUnlockedState() {
+      if (!canUseSessionStorage) { return fallbackUnlocked; }
+      try { return window.sessionStorage.getItem(unlockKey) === "true"; } catch (e) { return false; }
+    }
+
+    function setUnlockedState(value) {
+      if (!canUseSessionStorage) { fallbackUnlocked = value; return; }
+      try {
+        if (value) { window.sessionStorage.setItem(unlockKey, "true"); }
+        else { window.sessionStorage.removeItem(unlockKey); }
+      } catch (e) { fallbackUnlocked = value; }
+    }
+
+    function clearFeedback(target) {
+      if (!target) { return; }
+      target.textContent = "";
+      target.classList.remove("is-error", "is-success");
+    }
+
+    function setFeedback(target, message, tone) {
+      if (!target) { return; }
+      target.textContent = message;
+      target.classList.remove("is-error", "is-success");
+      if (tone === "error") { target.classList.add("is-error"); }
+      if (tone === "success") { target.classList.add("is-success"); }
+    }
+  }
+
+  function initArticlePage() {
+    var shell = document.querySelector("[data-article-page]");
+    var articlesStorageKey = "cybercritters_articles";
+    var params, articleId, raw, articles, post;
+
+    if (!shell) { return; }
+
+    params = new URLSearchParams(window.location.search);
+    articleId = params.get("id");
+
+    function renderNotFound() {
+      shell.innerHTML =
+        "<p class=\"article-page-not-found\">Article not found. It may have been deleted or this link is no longer valid.</p>" +
+        "<a href=\"blog.html\" class=\"article-back-link\">\u2190 Back to Blog</a>";
+    }
+
+    if (!articleId) { renderNotFound(); return; }
+
+    try {
+      raw = window.localStorage.getItem(articlesStorageKey);
+      articles = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(articles)) { articles = []; }
+    } catch (e) { articles = []; }
+
+    post = null;
+    articles.forEach(function (a) { if (a && a.id === articleId) { post = a; } });
+
+    if (!post) { renderNotFound(); return; }
+
+    document.title = post.title + " \u2014 CyberCritters";
+
+    shell.innerHTML = "";
+
+    var backLink = document.createElement("a");
+    backLink.href = "blog.html";
+    backLink.className = "article-back-link";
+    backLink.textContent = "\u2190 Back to Blog";
+    shell.appendChild(backLink);
+
+    var card = document.createElement("article");
+    card.className = "article-full-card";
+
+    var meta = document.createElement("div");
+    meta.className = "blog-post-meta";
+    var chip = document.createElement("span");
+    chip.className = "blog-post-type";
+    chip.textContent = "Article";
+    var dateEl = document.createElement("time");
+    dateEl.className = "blog-post-date";
+    dateEl.textContent = post.dateLabel;
+    if (post.isoDate) { dateEl.setAttribute("datetime", post.isoDate); }
+    meta.appendChild(chip);
+    meta.appendChild(dateEl);
+    card.appendChild(meta);
+
+    if (post.imageSrc) {
+      var figure = document.createElement("figure");
+      var img = document.createElement("img");
+      figure.className = "blog-post-media";
+      img.className = "blog-post-image";
+      img.src = post.imageSrc;
+      img.alt = post.imageAlt || post.title;
+      img.loading = "eager";
+      img.decoding = "async";
+      figure.appendChild(img);
+      card.appendChild(figure);
+    }
+
+    var titleEl = document.createElement("h1");
+    titleEl.className = "article-full-title";
+    titleEl.textContent = post.title;
+    card.appendChild(titleEl);
+
+    var bodyEl = document.createElement("div");
+    bodyEl.className = "article-full-body";
+    var paragraphs = String(post.body || "")
+      .replace(/\r\n/g, "\n")
+      .trim()
+      .split(/\n\s*\n/)
+      .map(function (p) { return p.replace(/\s*\n+\s*/g, " ").trim(); })
+      .filter(Boolean);
+    paragraphs.forEach(function (text) {
+      var p = document.createElement("p");
+      p.textContent = text;
+      bodyEl.appendChild(p);
+    });
+    card.appendChild(bodyEl);
+
+    shell.appendChild(card);
+  }
+
 });

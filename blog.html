@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CyberCritters | Blog and Research</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    name="description"
+    content="Read CyberCritters newsletters and research notes covering practical safety habits, security updates, and community-friendly digital guidance."
+  />
+  <script>
+    document.documentElement.classList.add("js");
+  </script>
+  <link rel="stylesheet" href="styles.css?v=20260407pixel" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&amp;family=Space+Grotesk:wght@500;700&amp;display=swap"
+    rel="stylesheet"
+  />
+</head>
+<body class="blog-page">
+  <header class="site-header">
+    <button class="menu-toggle hamburger" type="button" aria-expanded="false" aria-controls="site-menu" aria-label="Open navigation menu">
+      <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+        <path
+          class="line line-top-bottom"
+          d="M27 10 13 10C10.8 10 9 8.2 9 6 9 3.5 10.8 2 13 2 15.2 2 17 3.8 17 6L17 26C17 28.2 18.8 30 21 30 23.2 30 25 28.2 25 26 25 23.8 23.2 22 21 22L7 22"
+        ></path>
+        <path class="line" d="M7 16 27 16"></path>
+      </svg>
+    </button>
+
+    <div class="nav-backdrop" data-menu-close></div>
+
+    <nav id="site-menu" class="nav-links" aria-label="Primary">
+      <a href="index.html#home" data-menu-link>Home</a>
+      <a href="history.html" data-menu-link>History</a>
+      <a href="team.html" data-menu-link>Team</a>
+      <a href="faq.html" data-menu-link>FAQ</a>
+      <a href="blog.html" data-menu-link aria-current="page">Blog and Research</a>
+    </nav>
+  </header>
+
+  <main class="page-shell blog-page-shell">
+    <section class="blog-content-section" aria-label="Blog content and admin composer">
+      <div class="container blog-layout">
+
+        <!-- ── LEFT: content feeds ── -->
+        <div class="blog-feed-shell">
+
+          <!-- Articles -->
+          <div class="blog-section-block">
+            <h2 class="blog-section-heading">Articles</h2>
+            <hr class="blog-section-divider" />
+            <div class="blog-feed articles-feed" data-articles-feed></div>
+            <p class="blog-feed-empty" data-articles-empty hidden>No articles have been published yet.</p>
+          </div>
+
+          <!-- Iggy Tips -->
+          <div class="blog-section-block">
+            <h2 class="blog-section-heading">Iggy Tips!</h2>
+            <hr class="blog-section-divider" />
+            <div class="iggy-tips-feed" data-iggy-feed></div>
+            <p class="blog-feed-empty" data-iggy-empty hidden>No tips have been posted yet.</p>
+          </div>
+
+        </div>
+
+        <!-- ── RIGHT: admin panel ── -->
+        <aside class="blog-admin-panel" data-blog-admin-panel>
+
+          <!-- Lock card -->
+          <div class="blog-admin-card blog-admin-lock" data-blog-admin-lock>
+            <p class="blog-section-label">Admin Console</p>
+            <h2 class="blog-admin-title">Post to the blog</h2>
+
+            <form class="blog-unlock-form" data-blog-unlock-form>
+              <div class="blog-field">
+                <label for="blog-admin-password">Admin password</label>
+                <input
+                  id="blog-admin-password"
+                  name="admin-password"
+                  type="password"
+                  class="blog-input"
+                  autocomplete="current-password"
+                  required
+                />
+              </div>
+              <button type="submit" class="blog-button">Unlock composer</button>
+            </form>
+
+            <p class="blog-feedback" data-blog-admin-feedback aria-live="polite"></p>
+          </div>
+
+          <!-- Composer card -->
+          <div class="blog-admin-card blog-composer" data-blog-composer hidden>
+            <div class="blog-admin-top">
+              <div>
+                <p class="blog-section-label">Admin Console</p>
+                <h2 class="blog-admin-title">Composer unlocked</h2>
+              </div>
+              <span class="blog-admin-pill">Admin access</span>
+            </div>
+
+<!-- Type tabs -->
+            <div class="blog-type-tabs" role="tablist" aria-label="Post type">
+              <button type="button" class="blog-type-tab is-active" role="tab" aria-selected="true" data-post-type="article">Article</button>
+              <button type="button" class="blog-type-tab" role="tab" aria-selected="false" data-post-type="tip">Iggy Tip</button>
+            </div>
+
+            <!-- Article form -->
+            <form class="blog-form" data-article-form>
+              <div class="blog-field">
+                <label for="article-title">Article title</label>
+                <input id="article-title" name="title" type="text" class="blog-input" maxlength="120" required />
+              </div>
+
+              <div class="blog-field">
+                <label for="article-body">Article body</label>
+                <textarea
+                  id="article-body"
+                  name="body"
+                  class="blog-input blog-textarea"
+                  placeholder="Write the full article here. Use blank lines to create new paragraphs."
+                  required
+                ></textarea>
+              </div>
+
+              <div class="blog-field">
+                <label for="article-image">Attach image (optional)</label>
+                <input
+                  id="article-image"
+                  name="image"
+                  type="file"
+                  class="blog-input blog-input-file"
+                  accept="image/*"
+                />
+              </div>
+
+              <div class="blog-form-actions">
+                <button type="submit" class="blog-button">Publish article</button>
+              </div>
+            </form>
+
+            <!-- Iggy Tip form -->
+            <form class="blog-form" data-tip-form hidden>
+              <div class="blog-field">
+                <label for="tip-caption">Caption / title</label>
+                <input id="tip-caption" name="caption" type="text" class="blog-input" maxlength="120" required />
+              </div>
+
+              <div class="blog-field">
+                <label for="tip-image">Tip image (required)</label>
+                <input
+                  id="tip-image"
+                  name="image"
+                  type="file"
+                  class="blog-input blog-input-file"
+                  accept="image/*"
+                  required
+                />
+              </div>
+
+              <div class="blog-form-actions">
+                <button type="submit" class="blog-button">Post tip</button>
+              </div>
+            </form>
+
+            <p class="blog-feedback" data-blog-form-feedback aria-live="polite"></p>
+
+            <button type="button" class="blog-button blog-button-secondary blog-lock-btn" data-blog-lock>Lock admin panel</button>
+          </div>
+
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-copy">
+        <p class="footer-brand">CyberCritters</p>
+        <p class="footer-email-text">Email: CyberCrittersCEO@gmail.com</p>
+        <p class="footer-contact"><a href="https://docs.google.com/forms/d/e/1FAIpQLScG01qvbzuL1TJUGbQuSAB-mWb_0QX9uMf7QnUFSmRPn3S9rQ/viewform?usp=dialog" target="_blank" rel="noopener">Contact Us</a></p>
+      </div>
+
+      <div class="social-links">
+        <a href="https://discord.com/invite/C9W5WYwt" target="_blank" rel="noopener" aria-label="Discord">
+          <img class="social-icon" src="images/Discord.png" alt="Discord" />
+        </a>
+        <a
+          href="https://www.linkedin.com/company/cybercritters/posts/?feedView=all"
+          target="_blank"
+          rel="noopener"
+          aria-label="LinkedIn"
+        >
+          <img class="social-icon" src="images/Linkedln.png" alt="LinkedIn" />
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="site.js?v=20260402blog3"></script>
+</body>
+</html>
