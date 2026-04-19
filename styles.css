@@ -639,9 +639,9 @@ body.menu-open .nav-links {
 .team-title {
   margin: 0;
   margin-top: 0.8rem;
-  max-width: 9ch;
+  max-width: 14ch;
   font-family: "Space Grotesk", "Inter", system-ui, sans-serif;
-  font-size: clamp(3rem, 5.8vw, 5.6rem);
+  font-size: clamp(2.6rem, 4.6vw, 4.4rem);
   line-height: 0.92;
   letter-spacing: -0.05em;
   color: #0f2634;
