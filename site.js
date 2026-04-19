@@ -2421,3 +2421,78 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
 });
+
+(function initClickSpark() {
+  if (typeof document === "undefined") { return; }
+  var SPARK_COUNT = 8;
+  var DURATION = 400;
+  var START_RADIUS = 15;
+  var EXTRA = 15;
+  var LENGTH = 10;
+  var STROKE = 2;
+  var COLOR = "#ffd35f";
+  var SVG_NS = "http://www.w3.org/2000/svg";
+
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+  function spawn(x, y) {
+    var size = (START_RADIUS + EXTRA + LENGTH) * 2 + STROKE * 2;
+    var svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("width", size);
+    svg.setAttribute("height", size);
+    svg.setAttribute("viewBox", "0 0 " + size + " " + size);
+    svg.style.position = "fixed";
+    svg.style.left = (x - size / 2) + "px";
+    svg.style.top = (y - size / 2) + "px";
+    svg.style.pointerEvents = "none";
+    svg.style.zIndex = "9999";
+
+    var lines = [];
+    for (var i = 0; i < SPARK_COUNT; i++) {
+      var line = document.createElementNS(SVG_NS, "line");
+      line.setAttribute("stroke", COLOR);
+      line.setAttribute("stroke-width", String(STROKE));
+      line.setAttribute("stroke-linecap", "round");
+      svg.appendChild(line);
+      lines.push(line);
+    }
+    document.body.appendChild(svg);
+
+    var cx = size / 2;
+    var cy = size / 2;
+    var start = null;
+
+    function frame(ts) {
+      if (start === null) { start = ts; }
+      var t = Math.min(1, (ts - start) / DURATION);
+      var eased = easeOutCubic(t);
+      var offset = eased * EXTRA;
+      var segLen = LENGTH * (1 - eased);
+      var opacity = 1 - eased;
+
+      for (var i = 0; i < SPARK_COUNT; i++) {
+        var a = (i / SPARK_COUNT) * Math.PI * 2;
+        var cos = Math.cos(a);
+        var sin = Math.sin(a);
+        var r1 = START_RADIUS + offset;
+        var r2 = r1 + segLen;
+        lines[i].setAttribute("x1", cx + cos * r1);
+        lines[i].setAttribute("y1", cy + sin * r1);
+        lines[i].setAttribute("x2", cx + cos * r2);
+        lines[i].setAttribute("y2", cy + sin * r2);
+        lines[i].setAttribute("stroke-opacity", opacity);
+      }
+
+      if (t < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        svg.remove();
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  document.addEventListener("click", function (e) {
+    spawn(e.clientX, e.clientY);
+  }, { passive: true });
+})();
