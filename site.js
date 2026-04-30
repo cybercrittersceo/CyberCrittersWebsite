@@ -612,10 +612,12 @@ document.addEventListener("DOMContentLoaded", function () {
       var image;
       var summary;
       var summaryEl;
+      var editLink;
       var deleteBtn;
       var readMoreLink;
       var cardFooter = document.createElement("div");
       var articleUrl = post.id ? "article.html?id=" + encodeURIComponent(post.id) : null;
+      var editUrl = post.id ? "article-editor.html?edit=" + encodeURIComponent(post.id) : null;
 
       article.className = "blog-post-card blog-post-card--local";
 
@@ -657,6 +659,14 @@ document.addEventListener("DOMContentLoaded", function () {
         readMoreLink.textContent = "Read full article \u2192";
       }
 
+      if (editUrl) {
+        editLink = document.createElement("a");
+        editLink.href = editUrl;
+        editLink.className = "blog-read-more blog-edit-link";
+        editLink.textContent = "Edit article";
+        editLink.style.display = getUnlockedState() ? "" : "none";
+      }
+
       deleteBtn = document.createElement("button");
       deleteBtn.type = "button";
       deleteBtn.className = "blog-delete-btn";
@@ -681,6 +691,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
       cardFooter.className = "blog-card-footer";
       if (readMoreLink) { cardFooter.appendChild(readMoreLink); }
+      if (editLink) { cardFooter.appendChild(editLink); }
       cardFooter.appendChild(deleteBtn);
 
       article.appendChild(meta);
@@ -739,15 +750,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
     function syncAdminState() {
       var isUnlocked = getUnlockedState();
-      var deleteBtns = document.querySelectorAll(".blog-delete-btn");
+      var adminActions = document.querySelectorAll(".blog-delete-btn, .blog-edit-link");
 
       if (adminPanel && composer) {
         adminPanel.classList.toggle("is-unlocked", isUnlocked);
         composer.hidden = !isUnlocked;
       }
 
-      deleteBtns.forEach(function (btn) {
-        btn.style.display = isUnlocked ? "" : "none";
+      adminActions.forEach(function (action) {
+        action.style.display = isUnlocked ? "" : "none";
       });
     }
   }
@@ -759,6 +770,8 @@ document.addEventListener("DOMContentLoaded", function () {
     var unlockForm = document.querySelector("[data-editor-unlock-form]");
     var unlockInput = document.getElementById("editor-admin-password");
     var gateFeedback = document.querySelector("[data-editor-gate-feedback]");
+    var workspaceTitle = document.querySelector(".article-editor-page-title--workspace");
+    var workspaceCopy = workspace ? workspace.querySelector(".article-editor-page-copy") : null;
     var titleInput = document.querySelector("[data-editor-title]");
     var authorInput = document.querySelector("[data-editor-author]");
     var coverInput = document.querySelector("[data-editor-cover]");
@@ -783,6 +796,8 @@ document.addEventListener("DOMContentLoaded", function () {
     var draggedBlock = null;
     var draggedPaletteType = "";
     var blockSequence = 0;
+    var editArticleId = new URLSearchParams(window.location.search).get("edit");
+    var editingArticle = null;
 
     if (!page) {
       return;
@@ -994,7 +1009,7 @@ document.addEventListener("DOMContentLoaded", function () {
         var sanitizedBody = serializeCanvasHtml();
         var bodyText = extractPlainTextFromHtml(sanitizedBody);
         var now;
-        var newArticle;
+        var articleData;
 
         if (!getUnlockedState()) {
           setFeedback(feedback, "Unlock the article builder before publishing.", "error");
@@ -1012,39 +1027,82 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         now = new Date();
-        newArticle = {
-          id: "article-" + now.getTime(),
+        articleData = {
+          id: editingArticle && editingArticle.id ? editingArticle.id : "article-" + now.getTime(),
           title: title,
           author: author,
           body: bodyText,
           bodyHtml: sanitizedBody,
           imageSrc: currentCoverImage ? currentCoverImage.src : "",
           imageAlt: currentCoverImage ? currentCoverImage.alt : title,
-          isoDate: now.toISOString().slice(0, 10),
-          dateLabel: formatDate(now)
+          isoDate: editingArticle && editingArticle.isoDate ? editingArticle.isoDate : now.toISOString().slice(0, 10),
+          dateLabel: editingArticle && editingArticle.dateLabel ? editingArticle.dateLabel : formatDate(now)
         };
 
-        setFeedback(feedback, "Publishing article to GitHub...", "success");
+        if (editingArticle && editingArticle.editedAt) {
+          articleData.editedAt = editingArticle.editedAt;
+        }
+
+        if (editingArticle) {
+          articleData.editedAt = now.toISOString();
+        }
+
+        setFeedback(feedback, editingArticle ? "Saving article changes to GitHub..." : "Publishing article to GitHub...", "success");
         loadBlogFeedItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle).then(function (storedArticles) {
+          var articleWasFound = false;
+          var nextArticles;
+
+          if (editingArticle) {
+            nextArticles = storedArticles.map(function (articleItem) {
+              if (articleItem && articleItem.id === editingArticle.id) {
+                articleWasFound = true;
+                return articleData;
+              }
+              return articleItem;
+            });
+
+            if (!articleWasFound) {
+              throw new Error("The original article could not be found. Refresh the blog and try again.");
+            }
+          } else {
+            nextArticles = [articleData].concat(storedArticles);
+          }
+
           return saveSharedBlogItems(
             BLOG_ARTICLES_STORAGE_KEY,
-            [newArticle].concat(storedArticles),
-            "Publish article: " + title
+            nextArticles,
+            editingArticle ? "Edit article: " + title : "Publish article: " + title
           );
         }).then(function () {
+          if (editingArticle) {
+            editingArticle = articleData;
+            setFeedback(feedback, "Article changes saved for every visitor.", "success");
+            updateDraftStatus("Editing the published article.");
+            return;
+          }
+
           clearEditorDraft();
           resetEditor(false);
           addDefaultBlocks();
           setFeedback(feedback, "Article published for every visitor.", "success");
           updateDraftStatus("Draft cleared after publishing.");
         }).catch(function (saveError) {
-          setFeedback(feedback, getPublishErrorMessage(saveError, "Could not publish the article."), "error");
+          setFeedback(feedback, getPublishErrorMessage(saveError, editingArticle ? "Could not save the article changes." : "Could not publish the article."), "error");
         });
       });
     }
 
     if (resetButton) {
       resetButton.addEventListener("click", function () {
+        if (editArticleId) {
+          if (!window.confirm("Discard local edits and reload the published article?")) {
+            return;
+          }
+
+          restoreArticleForEditing(editArticleId);
+          return;
+        }
+
         if (!window.confirm("Start a fresh article? This clears the current draft from this browser.")) {
           return;
         }
@@ -1064,9 +1122,67 @@ document.addEventListener("DOMContentLoaded", function () {
       if (workspace) { workspace.hidden = !isUnlocked; }
 
       if (isUnlocked && !restoredDraft) {
-        restoreDraft();
+        if (editArticleId) {
+          restoreArticleForEditing(editArticleId);
+        } else {
+          restoreDraft();
+        }
         restoredDraft = true;
       }
+    }
+
+    function restoreArticleForEditing(articleId) {
+      resetEditor(false);
+      if (publishButton) { publishButton.textContent = "Save changes"; }
+      if (resetButton) { resetButton.textContent = "Reload article"; }
+      if (workspaceTitle) { workspaceTitle.textContent = "Edit published article"; }
+      if (workspaceCopy) { workspaceCopy.textContent = "Update the article here, then save the changes back to the live blog."; }
+      updateDraftStatus("Loading published article...");
+
+      loadBlogFeedItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle).then(function (articles) {
+        var matchedArticle = null;
+
+        articles.forEach(function (articleItem) {
+          if (articleItem && articleItem.id === articleId) {
+            matchedArticle = articleItem;
+          }
+        });
+
+        if (!matchedArticle) {
+          editingArticle = null;
+          addDefaultBlocks();
+          updateDraftStatus("Published article could not be loaded.");
+          setFeedback(feedback, "Could not find that article. Return to the blog and choose Edit article again.", "error");
+          return;
+        }
+
+        editingArticle = matchedArticle;
+        if (titleInput) { titleInput.value = matchedArticle.title || ""; }
+        if (authorInput) { authorInput.value = matchedArticle.author || ""; }
+        if (matchedArticle.imageSrc) {
+          currentCoverImage = {
+            src: matchedArticle.imageSrc,
+            alt: matchedArticle.imageAlt || matchedArticle.title || "Article cover image"
+          };
+        }
+
+        if (matchedArticle.bodyHtml) {
+          addBlock("paragraph", { html: matchedArticle.bodyHtml }, null, true);
+        } else if (matchedArticle.body) {
+          addBlock("paragraph", { html: textToParagraphHtml(matchedArticle.body) }, null, true);
+        } else {
+          addDefaultBlocks();
+        }
+
+        updateDraftStatus("Editing published article.");
+        clearFeedback(feedback);
+        if (titleInput) { titleInput.focus(); }
+      }).catch(function () {
+        editingArticle = null;
+        addDefaultBlocks();
+        updateDraftStatus("Published article could not be loaded.");
+        setFeedback(feedback, "Could not load that article. Check your connection and try again.", "error");
+      });
     }
 
     function restoreDraft() {
@@ -1182,6 +1298,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     function scheduleDraftSave() {
+      if (editArticleId) {
+        updateDraftStatus("Editing published article.");
+        return;
+      }
+
       window.clearTimeout(draftTimer);
       draftTimer = window.setTimeout(saveDraft, 220);
     }
@@ -2206,6 +2327,19 @@ document.addEventListener("DOMContentLoaded", function () {
     return normalizeText(source);
   }
 
+  function textToParagraphHtml(value) {
+    var paragraphs = String(value || "")
+      .replace(/\r\n/g, "\n")
+      .trim()
+      .split(/\n\s*\n/)
+      .map(function (paragraph) { return paragraph.replace(/\s*\n+\s*/g, " ").trim(); })
+      .filter(Boolean);
+
+    return paragraphs.map(function (paragraph) {
+      return "<p>" + escapeHtml(paragraph) + "</p>";
+    }).join("");
+  }
+
   function renderArticleBody(target, post) {
     var sanitizedHtml = typeof post.bodyHtml === "string" ? sanitizeArticleMarkup(post.bodyHtml) : "";
     var paragraphs;
@@ -2601,6 +2735,13 @@ document.addEventListener("DOMContentLoaded", function () {
     return String(value || "")
       .replace(/&/g, "&amp;")
       .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
   }
