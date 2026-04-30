@@ -8,7 +8,15 @@ document.addEventListener("DOMContentLoaded", function () {
   var BLOG_ARTICLES_STORAGE_KEY = "cybercritters_articles";
   var BLOG_IGGY_STORAGE_KEY = "cybercritters_iggy_tips";
   var BLOG_UNLOCK_KEY = "cybercritters_blog_admin_unlocked";
+  var BLOG_PUBLISH_TOKEN_KEY = "cybercritters_github_publish_token";
   var ARTICLE_DRAFT_STORAGE_KEY = "cybercritters_article_draft_v3";
+  var BLOG_REMOTE_CONFIG = {
+    owner: "CyberCrittersCEO",
+    repo: "CyberCrittersWebsite",
+    branch: "main",
+    articlesPath: "data/articles.json",
+    tipsPath: "data/iggy-tips.json"
+  };
   var canUseLocalStorage = supportsStorage("localStorage");
   var canUseSessionStorage = supportsStorage("sessionStorage");
   var fallbackArticles = [];
@@ -437,10 +445,18 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    storedArticles = getStoredItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle);
-    storedTips = getStoredItems(BLOG_IGGY_STORAGE_KEY, fallbackTips, isValidTip);
+    storedArticles = [];
+    storedTips = [];
     renderArticles(storedArticles);
     renderTips(storedTips);
+    loadBlogFeedItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle).then(function (items) {
+      storedArticles = items;
+      renderArticles(storedArticles);
+    });
+    loadBlogFeedItems(BLOG_IGGY_STORAGE_KEY, fallbackTips, isValidTip).then(function (items) {
+      storedTips = items;
+      renderTips(storedTips);
+    });
     syncAdminState();
 
     if (unlockForm) {
@@ -499,7 +515,7 @@ document.addEventListener("DOMContentLoaded", function () {
         clearFeedback(formFeedback);
 
         preparePostImage(imageFile, caption, function (error, imageData) {
-          var now, newTip, next, saved;
+          var now, newTip, next;
 
           if (error) {
             setFeedback(formFeedback, error, "error");
@@ -522,20 +538,19 @@ document.addEventListener("DOMContentLoaded", function () {
           };
 
           next = [newTip].concat(storedTips);
-          saved = saveStoredItems(BLOG_IGGY_STORAGE_KEY, next, fallbackTips);
-
-          if (!saved) {
-            setFeedback(formFeedback, "Could not save. Try a smaller image.", "error");
-            return;
-          }
-
-          storedTips = next;
-          if (iggyFeed) {
-            iggyFeed.insertBefore(createTipCard(newTip), iggyFeed.firstChild);
-          }
-          syncEmpty();
-          tipForm.reset();
-          setFeedback(formFeedback, canUseLocalStorage ? "Tip posted." : "Tip added for this visit only.", "success");
+          setFeedback(formFeedback, "Publishing tip to GitHub...", "success");
+          saveSharedBlogItems(BLOG_IGGY_STORAGE_KEY, next, "Publish Iggy Tip: " + caption).then(function () {
+            storedTips = next;
+            if (iggyFeed) {
+              iggyFeed.insertBefore(createTipCard(newTip), iggyFeed.firstChild);
+            }
+            syncEmpty();
+            syncAdminState();
+            tipForm.reset();
+            setFeedback(formFeedback, "Tip published for every visitor.", "success");
+          }).catch(function (saveError) {
+            setFeedback(formFeedback, getPublishErrorMessage(saveError, "Could not publish the tip."), "error");
+          });
         });
       });
     }
@@ -652,9 +667,16 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!getUnlockedState()) { return; }
         if (!window.confirm("Delete \"" + post.title + "\"? This cannot be undone.")) { return; }
         storedArticles = storedArticles.filter(function (articleItem) { return articleItem.id !== post.id; });
-        saveStoredItems(BLOG_ARTICLES_STORAGE_KEY, storedArticles, fallbackArticles);
-        if (article.parentNode) { article.parentNode.removeChild(article); }
-        syncEmpty();
+        saveSharedBlogItems(BLOG_ARTICLES_STORAGE_KEY, storedArticles, "Delete article: " + post.title).then(function () {
+          if (article.parentNode) { article.parentNode.removeChild(article); }
+          syncEmpty();
+        }).catch(function (saveError) {
+          loadBlogFeedItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle).then(function (items) {
+            storedArticles = items;
+            renderArticles(storedArticles);
+          });
+          setFeedback(formFeedback, getPublishErrorMessage(saveError, "Could not delete the article."), "error");
+        });
       });
 
       cardFooter.className = "blog-card-footer";
@@ -696,9 +718,16 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!getUnlockedState()) { return; }
         if (!window.confirm("Delete tip \"" + tip.caption + "\"? This cannot be undone.")) { return; }
         storedTips = storedTips.filter(function (tipItem) { return tipItem.id !== tip.id; });
-        saveStoredItems(BLOG_IGGY_STORAGE_KEY, storedTips, fallbackTips);
-        if (card.parentNode) { card.parentNode.removeChild(card); }
-        syncEmpty();
+        saveSharedBlogItems(BLOG_IGGY_STORAGE_KEY, storedTips, "Delete Iggy Tip: " + tip.caption).then(function () {
+          if (card.parentNode) { card.parentNode.removeChild(card); }
+          syncEmpty();
+        }).catch(function (saveError) {
+          loadBlogFeedItems(BLOG_IGGY_STORAGE_KEY, fallbackTips, isValidTip).then(function (items) {
+            storedTips = items;
+            renderTips(storedTips);
+          });
+          setFeedback(formFeedback, getPublishErrorMessage(saveError, "Could not delete the tip."), "error");
+        });
       });
 
       card.appendChild(img);
@@ -964,11 +993,8 @@ document.addEventListener("DOMContentLoaded", function () {
         var author = normalizeText(authorInput && authorInput.value) || "CyberCritters team";
         var sanitizedBody = serializeCanvasHtml();
         var bodyText = extractPlainTextFromHtml(sanitizedBody);
-        var storedArticles = getStoredItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle);
         var now;
         var newArticle;
-        var nextArticles;
-        var saved;
 
         if (!getUnlockedState()) {
           setFeedback(feedback, "Unlock the article builder before publishing.", "error");
@@ -998,19 +1024,22 @@ document.addEventListener("DOMContentLoaded", function () {
           dateLabel: formatDate(now)
         };
 
-        nextArticles = [newArticle].concat(storedArticles);
-        saved = saveStoredItems(BLOG_ARTICLES_STORAGE_KEY, nextArticles, fallbackArticles);
-
-        if (!saved) {
-          setFeedback(feedback, "Could not save the article. Try using fewer or smaller images.", "error");
-          return;
-        }
-
-        clearEditorDraft();
-        resetEditor(false);
-        addDefaultBlocks();
-        setFeedback(feedback, "Article published. It now appears on the blog page.", "success");
-        updateDraftStatus("Draft cleared after publishing.");
+        setFeedback(feedback, "Publishing article to GitHub...", "success");
+        loadBlogFeedItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle).then(function (storedArticles) {
+          return saveSharedBlogItems(
+            BLOG_ARTICLES_STORAGE_KEY,
+            [newArticle].concat(storedArticles),
+            "Publish article: " + title
+          );
+        }).then(function () {
+          clearEditorDraft();
+          resetEditor(false);
+          addDefaultBlocks();
+          setFeedback(feedback, "Article published for every visitor.", "success");
+          updateDraftStatus("Draft cleared after publishing.");
+        }).catch(function (saveError) {
+          setFeedback(feedback, getPublishErrorMessage(saveError, "Could not publish the article."), "error");
+        });
       });
     }
 
@@ -1628,70 +1657,72 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    articles = getStoredItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle);
-    post = null;
-    articles.forEach(function (articleItem) {
-      if (articleItem && articleItem.id === articleId) {
-        post = articleItem;
+    loadBlogFeedItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle).then(function (loadedArticles) {
+      articles = loadedArticles;
+      post = null;
+      articles.forEach(function (articleItem) {
+        if (articleItem && articleItem.id === articleId) {
+          post = articleItem;
+        }
+      });
+
+      if (!post) {
+        renderNotFound();
+        return;
       }
-    });
 
-    if (!post) {
-      renderNotFound();
-      return;
-    }
+      document.title = post.title + " \u2014 CyberCritters";
+      shell.innerHTML = "";
 
-    document.title = post.title + " \u2014 CyberCritters";
-    shell.innerHTML = "";
+      var backLink = document.createElement("a");
+      backLink.href = "blog.html";
+      backLink.className = "article-back-link";
+      backLink.textContent = "\u2190 Back to Blog";
+      shell.appendChild(backLink);
 
-    var backLink = document.createElement("a");
-    backLink.href = "blog.html";
-    backLink.className = "article-back-link";
-    backLink.textContent = "\u2190 Back to Blog";
-    shell.appendChild(backLink);
+      var card = document.createElement("article");
+      card.className = "article-full-card";
 
-    var card = document.createElement("article");
-    card.className = "article-full-card";
+      var titleEl = document.createElement("h1");
+      titleEl.className = "article-full-title";
+      titleEl.textContent = post.title;
+      card.appendChild(titleEl);
 
-    var titleEl = document.createElement("h1");
-    titleEl.className = "article-full-title";
-    titleEl.textContent = post.title;
-    card.appendChild(titleEl);
+      if (post.imageSrc) {
+        var figure = document.createElement("figure");
+        var image = document.createElement("img");
+        figure.className = "blog-post-media article-full-media";
+        image.className = "blog-post-image";
+        image.src = post.imageSrc;
+        image.alt = post.imageAlt || post.title;
+        image.loading = "eager";
+        image.decoding = "async";
+        figure.appendChild(image);
+        card.appendChild(figure);
+      }
 
-    if (post.imageSrc) {
-      var figure = document.createElement("figure");
-      var image = document.createElement("img");
-      figure.className = "blog-post-media article-full-media";
-      image.className = "blog-post-image";
-      image.src = post.imageSrc;
-      image.alt = post.imageAlt || post.title;
-      image.loading = "eager";
-      image.decoding = "async";
-      figure.appendChild(image);
-      card.appendChild(figure);
-    }
+      var byline = document.createElement("div");
+      byline.className = "article-full-byline";
 
-    var byline = document.createElement("div");
-    byline.className = "article-full-byline";
+      var authorEl = document.createElement("p");
+      authorEl.className = "article-full-author";
+      authorEl.textContent = post.author || "CyberCritters team";
+      byline.appendChild(authorEl);
 
-    var authorEl = document.createElement("p");
-    authorEl.className = "article-full-author";
-    authorEl.textContent = post.author || "CyberCritters team";
-    byline.appendChild(authorEl);
+      var dateEl = document.createElement("time");
+      dateEl.className = "article-full-date";
+      dateEl.textContent = post.dateLabel;
+      if (post.isoDate) { dateEl.setAttribute("datetime", post.isoDate); }
+      byline.appendChild(dateEl);
+      card.appendChild(byline);
 
-    var dateEl = document.createElement("time");
-    dateEl.className = "article-full-date";
-    dateEl.textContent = post.dateLabel;
-    if (post.isoDate) { dateEl.setAttribute("datetime", post.isoDate); }
-    byline.appendChild(dateEl);
-    card.appendChild(byline);
+      var bodyEl = document.createElement("div");
+      bodyEl.className = "article-full-body";
+      renderArticleBody(bodyEl, post);
+      card.appendChild(bodyEl);
 
-    var bodyEl = document.createElement("div");
-    bodyEl.className = "article-full-body";
-    renderArticleBody(bodyEl, post);
-    card.appendChild(bodyEl);
-
-    shell.appendChild(card);
+      shell.appendChild(card);
+    }).catch(renderNotFound);
   }
 
   function supportsStorage(storageName) {
@@ -1743,6 +1774,180 @@ document.addEventListener("DOMContentLoaded", function () {
     } catch (error) {
       return false;
     }
+  }
+
+  function loadBlogFeedItems(key, fallback, validator) {
+    var localItems = getStoredItems(key, fallback, validator);
+
+    return fetchSharedBlogItems(key, validator).then(function (remoteItems) {
+      return remoteItems;
+    }).catch(function () {
+      return localItems;
+    });
+  }
+
+  function fetchSharedBlogItems(key, validator) {
+    var path = getSharedBlogPath(key);
+
+    if (!path || typeof window.fetch !== "function") {
+      return Promise.reject(new Error("Shared blog storage is unavailable."));
+    }
+
+    return window.fetch(path + "?v=" + Date.now(), { cache: "no-store" }).then(function (response) {
+      if (!response.ok) {
+        throw new Error("Shared blog file could not be loaded.");
+      }
+      return response.json();
+    }).then(function (items) {
+      if (!Array.isArray(items)) {
+        return [];
+      }
+      return items.filter(validator);
+    });
+  }
+
+  function saveSharedBlogItems(key, items, message) {
+    var token = getPublishToken();
+    var path = getSharedBlogPath(key);
+    var apiUrl;
+
+    if (!token) {
+      return Promise.reject(new Error("GitHub token is required to publish shared blog content."));
+    }
+
+    if (!path || typeof window.fetch !== "function") {
+      return Promise.reject(new Error("Shared blog storage is unavailable."));
+    }
+
+    apiUrl =
+      "https://api.github.com/repos/" +
+      encodeURIComponent(BLOG_REMOTE_CONFIG.owner) +
+      "/" +
+      encodeURIComponent(BLOG_REMOTE_CONFIG.repo) +
+      "/contents/" +
+      path;
+
+    return window.fetch(apiUrl + "?ref=" + encodeURIComponent(BLOG_REMOTE_CONFIG.branch), {
+      headers: createGitHubHeaders(token)
+    }).then(function (response) {
+      if (response.status === 404) {
+        return null;
+      }
+
+      if (!response.ok) {
+        throw new Error("GitHub could not read the current blog file.");
+      }
+
+      return response.json();
+    }).then(function (currentFile) {
+      var body = {
+        message: message || "Update CyberCritters blog content",
+        content: utf8ToBase64(JSON.stringify(items, null, 2) + "\n"),
+        branch: BLOG_REMOTE_CONFIG.branch
+      };
+
+      if (currentFile && currentFile.sha) {
+        body.sha = currentFile.sha;
+      }
+
+      return window.fetch(apiUrl, {
+        method: "PUT",
+        headers: createGitHubHeaders(token),
+        body: JSON.stringify(body)
+      });
+    }).then(function (response) {
+      if (response.status === 401 || response.status === 403) {
+        clearPublishToken();
+        throw new Error("GitHub rejected the publishing token.");
+      }
+
+      if (response.status === 409) {
+        throw new Error("The blog file changed on GitHub. Refresh the page and try again.");
+      }
+
+      if (!response.ok) {
+        throw new Error("GitHub could not save the blog file.");
+      }
+
+      saveStoredItems(key, items, key === BLOG_ARTICLES_STORAGE_KEY ? fallbackArticles : fallbackTips);
+      return response.json();
+    });
+  }
+
+  function getSharedBlogPath(key) {
+    if (key === BLOG_ARTICLES_STORAGE_KEY) {
+      return BLOG_REMOTE_CONFIG.articlesPath;
+    }
+
+    if (key === BLOG_IGGY_STORAGE_KEY) {
+      return BLOG_REMOTE_CONFIG.tipsPath;
+    }
+
+    return "";
+  }
+
+  function createGitHubHeaders(token) {
+    return {
+      "Accept": "application/vnd.github+json",
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    };
+  }
+
+  function getPublishToken() {
+    var token = "";
+
+    if (canUseSessionStorage) {
+      try {
+        token = window.sessionStorage.getItem(BLOG_PUBLISH_TOKEN_KEY) || "";
+      } catch (error) {
+        token = "";
+      }
+    }
+
+    if (!token) {
+      token = window.prompt(
+        "Paste a GitHub fine-grained token with Contents: Read and write access for CyberCrittersWebsite. It will only be kept for this browser tab."
+      ) || "";
+      token = token.trim();
+
+      if (token && canUseSessionStorage) {
+        try {
+          window.sessionStorage.setItem(BLOG_PUBLISH_TOKEN_KEY, token);
+        } catch (error) {}
+      }
+    }
+
+    return token;
+  }
+
+  function clearPublishToken() {
+    if (!canUseSessionStorage) {
+      return;
+    }
+
+    try {
+      window.sessionStorage.removeItem(BLOG_PUBLISH_TOKEN_KEY);
+    } catch (error) {}
+  }
+
+  function getPublishErrorMessage(error, fallbackMessage) {
+    var detail = error && error.message ? " " + error.message : "";
+    return fallbackMessage + detail;
+  }
+
+  function utf8ToBase64(value) {
+    var bytes = new TextEncoder().encode(String(value || ""));
+    var binary = "";
+    var chunkSize = 0x8000;
+    var index;
+
+    for (index = 0; index < bytes.length; index += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(index, index + chunkSize));
+    }
+
+    return window.btoa(binary);
   }
 
   function getStoredDraft() {
