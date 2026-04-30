@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "id": "article-1777574395244",
+    "title": "Test Article",
+    "author": "Jacob Weingardt",
+    "body": "This is a testAdd supporting details below this heading.This is a test",
+    "bodyHtml": "<h2>This is a test<span style=\"font-size: 1.05rem; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif\">Add supporting details below this heading.</span></h2><p>This is a test</p>",
+    "imageSrc": "",
+    "imageAlt": "Test Article",
+    "isoDate": "2026-04-30",
+    "dateLabel": "April 30, 2026"
+  }
+]
