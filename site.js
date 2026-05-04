@@ -850,7 +850,7 @@ document.addEventListener("DOMContentLoaded", function () {
           }
 
           currentCoverImage = imageData;
-          setFeedback(feedback, "Cover image ready.", "success");
+          setFeedback(feedback, "Cover image or GIF ready.", "success");
           scheduleDraftSave();
         });
       });
@@ -903,7 +903,7 @@ document.addEventListener("DOMContentLoaded", function () {
           setImageBlockData(pendingImageBlock, imageData);
           pendingImageBlock = null;
           scheduleDraftSave();
-          setFeedback(feedback, "Inline image inserted.", "success");
+          setFeedback(feedback, "Inline image or GIF inserted.", "success");
           inlineImageInput.value = "";
         });
       });
@@ -1462,7 +1462,7 @@ document.addEventListener("DOMContentLoaded", function () {
           "<div class=\"editor-block-surface editor-block-surface--image\">" +
             "<div class=\"editor-image-frame\" data-image-frame></div>" +
             "<div class=\"editor-image-controls\">" +
-              "<button type=\"button\" class=\"blog-button blog-button-secondary editor-image-button\" data-block-image-select>Choose image</button>" +
+              "<button type=\"button\" class=\"blog-button blog-button-secondary editor-image-button\" data-block-image-select>Choose image or GIF</button>" +
             "</div>" +
             "<div class=\"editor-block-editable editor-block-editable--caption\" data-block-editable data-image-caption data-placeholder=\"Optional caption\" contenteditable=\"true\">" +
               sanitizeArticleMarkup(data && data.captionHtml ? data.captionHtml : "") +
@@ -1607,7 +1607,7 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       if (!src) {
-        frame.innerHTML = "<div class=\"editor-image-placeholder\">Choose an image for this block.</div>";
+        frame.innerHTML = "<div class=\"editor-image-placeholder\">Choose an image or GIF for this block.</div>";
         return;
       }
 
@@ -2194,7 +2194,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
     reader = new FileReader();
     reader.onload = function () {
+      var imageSrc = String(reader.result || "");
       var preview = new Image();
+
+      if (isGifFile(file, imageSrc)) {
+        callback(null, { src: imageSrc, alt: label });
+        return;
+      }
 
       preview.onload = function () {
         var result = resizeImageData(preview, file);
@@ -2210,7 +2216,7 @@ document.addEventListener("DOMContentLoaded", function () {
         callback("Image could not be opened.", null);
       };
 
-      preview.src = String(reader.result || "");
+      preview.src = imageSrc;
     };
 
     reader.onerror = function () {
@@ -2218,6 +2224,14 @@ document.addEventListener("DOMContentLoaded", function () {
     };
 
     reader.readAsDataURL(file);
+  }
+
+  function isGifFile(file, dataUrl) {
+    var fileType = file && typeof file.type === "string" ? file.type.toLowerCase() : "";
+    var fileName = file && typeof file.name === "string" ? file.name.toLowerCase() : "";
+    var source = String(dataUrl || "").toLowerCase();
+
+    return fileType === "image/gif" || /\.gif$/.test(fileName) || source.indexOf("data:image/gif") === 0;
   }
 
   function resizeImageData(image, file) {

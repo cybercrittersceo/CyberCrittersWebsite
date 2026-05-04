@@ -12,7 +12,7 @@
   <script>
     document.documentElement.classList.add("js");
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260424favfaq" />
+  <link rel="stylesheet" href="styles.css?v=20260504gifs" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -120,13 +120,13 @@
                 </div>
 
                 <div class="blog-field">
-                  <label for="editor-cover-image">Cover image</label>
+                  <label for="editor-cover-image">Cover image or GIF</label>
                   <input
                     id="editor-cover-image"
                     name="cover-image"
                     type="file"
                     class="blog-input blog-input-file"
-                    accept="image/*"
+                    accept="image/*,.gif"
                     data-editor-cover
                   />
                 </div>
@@ -204,7 +204,7 @@
                 <button type="button" class="article-editor-block-btn" data-editor-insert="callout" data-palette-block="callout" draggable="true">Callout quote</button>
                 <button type="button" class="article-editor-block-btn" data-editor-insert="two-column" data-palette-block="two-column" draggable="true">Two-column layout</button>
                 <button type="button" class="article-editor-block-btn" data-editor-insert="divider" data-palette-block="divider" draggable="true">Divider</button>
-                <button type="button" class="article-editor-block-btn" data-editor-insert="image" data-palette-block="image" draggable="true">Inline image</button>
+                <button type="button" class="article-editor-block-btn" data-editor-insert="image" data-palette-block="image" draggable="true">Inline image or GIF</button>
               </div>
             </div>
 
@@ -222,7 +222,7 @@
           </aside>
         </div>
 
-        <input type="file" accept="image/*" hidden data-editor-inline-image />
+        <input type="file" accept="image/*,.gif" hidden data-editor-inline-image />
       </div>
     </section>
   </main>
@@ -254,6 +254,6 @@
     </div>
   </footer>
 
-  <script src="site.js?v=20260430editarticles"></script>
+  <script src="site.js?v=20260504gifs"></script>
 </body>
 </html>
