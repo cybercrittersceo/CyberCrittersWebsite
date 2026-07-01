@@ -445,8 +445,10 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    storedArticles = [];
-    storedTips = [];
+    // Paint any cached content immediately so repeat visitors see the feed
+    // instantly, then swap in the freshly fetched copy when it arrives.
+    storedArticles = getStoredItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle);
+    storedTips = getStoredItems(BLOG_IGGY_STORAGE_KEY, fallbackTips, isValidTip);
     renderArticles(storedArticles);
     renderTips(storedTips);
     loadBlogFeedItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle).then(function (items) {
@@ -775,6 +777,8 @@ document.addEventListener("DOMContentLoaded", function () {
     var titleInput = document.querySelector("[data-editor-title]");
     var authorInput = document.querySelector("[data-editor-author]");
     var coverInput = document.querySelector("[data-editor-cover]");
+    var coverUrlInput = document.querySelector("[data-editor-cover-url]");
+    var coverUrlButton = document.querySelector("[data-editor-cover-url-use]");
     var canvas = document.querySelector("[data-editor-canvas]");
     var feedback = document.querySelector("[data-editor-feedback]");
     var publishButton = document.querySelector("[data-editor-publish]");
@@ -853,6 +857,18 @@ document.addEventListener("DOMContentLoaded", function () {
           setFeedback(feedback, "Cover image or GIF ready.", "success");
           scheduleDraftSave();
         });
+      });
+    }
+
+    if (coverUrlButton) {
+      coverUrlButton.addEventListener("click", applyCoverGifUrl);
+    }
+
+    if (coverUrlInput) {
+      coverUrlInput.addEventListener("keydown", function (event) {
+        if (event.key !== "Enter") { return; }
+        event.preventDefault();
+        applyCoverGifUrl();
       });
     }
 
@@ -1008,6 +1024,7 @@ document.addEventListener("DOMContentLoaded", function () {
         var author = normalizeText(authorInput && authorInput.value) || "CyberCritters team";
         var sanitizedBody = serializeCanvasHtml();
         var bodyText = extractPlainTextFromHtml(sanitizedBody);
+        var hasBodyContent = hasArticleBodyContent(sanitizedBody);
         var now;
         var articleData;
 
@@ -1021,7 +1038,7 @@ document.addEventListener("DOMContentLoaded", function () {
           return;
         }
 
-        if (!bodyText) {
+        if (!hasBodyContent) {
           setFeedback(feedback, "Article body is required.", "error");
           return;
         }
@@ -1222,6 +1239,7 @@ document.addEventListener("DOMContentLoaded", function () {
       if (titleInput) { titleInput.value = ""; }
       if (authorInput) { authorInput.value = ""; }
       if (coverInput) { coverInput.value = ""; }
+      if (coverUrlInput) { coverUrlInput.value = ""; }
       if (canvas) { canvas.innerHTML = ""; }
       currentCoverImage = null;
       activeEditable = null;
@@ -1463,6 +1481,10 @@ document.addEventListener("DOMContentLoaded", function () {
             "<div class=\"editor-image-frame\" data-image-frame></div>" +
             "<div class=\"editor-image-controls\">" +
               "<button type=\"button\" class=\"blog-button blog-button-secondary editor-image-button\" data-block-image-select>Choose image or GIF</button>" +
+              "<div class=\"article-editor-url-row editor-image-url-row\">" +
+                "<input type=\"url\" class=\"blog-input\" placeholder=\"https://giphy.com/gifs/...\" data-block-image-url />" +
+                "<button type=\"button\" class=\"blog-button blog-button-secondary editor-image-button\" data-block-image-url-use>Use link</button>" +
+              "</div>" +
             "</div>" +
             "<div class=\"editor-block-editable editor-block-editable--caption\" data-block-editable data-image-caption data-placeholder=\"Optional caption\" contenteditable=\"true\">" +
               sanitizeArticleMarkup(data && data.captionHtml ? data.captionHtml : "") +
@@ -1485,6 +1507,8 @@ document.addEventListener("DOMContentLoaded", function () {
       var deleteButton = block.querySelector("[data-block-delete]");
       var handle = block.querySelector("[data-block-handle]");
       var imageButton = block.querySelector("[data-block-image-select]");
+      var imageUrlInput = block.querySelector("[data-block-image-url]");
+      var imageUrlButton = block.querySelector("[data-block-image-url-use]");
 
       if (deleteButton) {
         deleteButton.addEventListener("click", function () {
@@ -1515,6 +1539,20 @@ document.addEventListener("DOMContentLoaded", function () {
       if (imageButton) {
         imageButton.addEventListener("click", function () {
           startImageSelection(block);
+        });
+      }
+
+      if (imageUrlButton) {
+        imageUrlButton.addEventListener("click", function () {
+          applyImageBlockGifUrl(block, imageUrlInput);
+        });
+      }
+
+      if (imageUrlInput) {
+        imageUrlInput.addEventListener("keydown", function (event) {
+          if (event.key !== "Enter") { return; }
+          event.preventDefault();
+          applyImageBlockGifUrl(block, imageUrlInput);
         });
       }
 
@@ -1585,6 +1623,40 @@ document.addEventListener("DOMContentLoaded", function () {
       if (inlineImageInput) {
         inlineImageInput.click();
       }
+    }
+
+    function applyCoverGifUrl() {
+      var imageData = createRemoteGifImageData(
+        coverUrlInput && coverUrlInput.value,
+        normalizeText(titleInput && titleInput.value) || "Article cover GIF"
+      );
+
+      if (!imageData) {
+        setFeedback(feedback, "Paste a Giphy GIF link such as https://giphy.com/gifs/...", "error");
+        return;
+      }
+
+      currentCoverImage = imageData;
+      if (coverInput) { coverInput.value = ""; }
+      setFeedback(feedback, "Cover GIF link ready.", "success");
+      scheduleDraftSave();
+    }
+
+    function applyImageBlockGifUrl(block, input) {
+      var imageData = createRemoteGifImageData(
+        input && input.value,
+        normalizeText(titleInput && titleInput.value) || "Article GIF"
+      );
+
+      if (!imageData) {
+        setFeedback(feedback, "Paste a Giphy GIF link such as https://giphy.com/gifs/...", "error");
+        return;
+      }
+
+      setImageBlockData(block, imageData);
+      if (input) { input.value = ""; }
+      scheduleDraftSave();
+      setFeedback(feedback, "Inline GIF link inserted.", "success");
     }
 
     function setImageBlockData(block, imageData) {
@@ -1901,6 +1973,8 @@ document.addEventListener("DOMContentLoaded", function () {
     var localItems = getStoredItems(key, fallback, validator);
 
     return fetchSharedBlogItems(key, validator).then(function (remoteItems) {
+      // Warm the local cache so the next visit can paint instantly.
+      saveStoredItems(key, remoteItems, fallback);
       return remoteItems;
     }).catch(function () {
       return localItems;
@@ -1914,7 +1988,11 @@ document.addEventListener("DOMContentLoaded", function () {
       return Promise.reject(new Error("Shared blog storage is unavailable."));
     }
 
-    return window.fetch(path + "?v=" + Date.now(), { cache: "no-store" }).then(function (response) {
+    // Revalidate against the server (conditional request) instead of forcing a
+    // full re-download every time. When the file is unchanged the browser gets
+    // a fast 304 and reuses the cached body; when an admin publishes, the ETag
+    // changes and fresh content is fetched — so content is never stale.
+    return window.fetch(path, { cache: "no-cache" }).then(function (response) {
       if (!response.ok) {
         throw new Error("Shared blog file could not be loaded.");
       }
@@ -1948,7 +2026,12 @@ document.addEventListener("DOMContentLoaded", function () {
       "/contents/" +
       path;
 
+    return saveSharedBlogItemsAttempt(apiUrl, token, key, items, message, 0);
+  }
+
+  function saveSharedBlogItemsAttempt(apiUrl, token, key, items, message, retryCount) {
     return window.fetch(apiUrl + "?ref=" + encodeURIComponent(BLOG_REMOTE_CONFIG.branch), {
+      cache: "no-store",
       headers: createGitHubHeaders(token)
     }).then(function (response) {
       if (response.status === 404) {
@@ -1983,6 +2066,10 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       if (response.status === 409) {
+        if (retryCount < 1) {
+          return saveSharedBlogItemsAttempt(apiUrl, token, key, items, message, retryCount + 1);
+        }
+
         throw new Error("The blog file changed on GitHub. Refresh the page and try again.");
       }
 
@@ -2226,6 +2313,68 @@ document.addEventListener("DOMContentLoaded", function () {
     reader.readAsDataURL(file);
   }
 
+  function createRemoteGifImageData(value, label) {
+    var src = normalizeGiphyImageUrl(value);
+
+    if (!src || !isSafeUrl(src, "src")) {
+      return null;
+    }
+
+    return {
+      src: src,
+      alt: label || "Article GIF"
+    };
+  }
+
+  function normalizeGiphyImageUrl(value) {
+    var raw = String(value || "").trim();
+    var parsed;
+    var host;
+    var path;
+    var match;
+    var gifId;
+
+    if (!raw) {
+      return "";
+    }
+
+    if (/^https?:\/\/[^?#]+\.(gif|webp|png|jpe?g)(\?[^#]*)?(#.*)?$/i.test(raw)) {
+      return raw;
+    }
+
+    try {
+      parsed = new URL(raw);
+    } catch (error) {
+      return "";
+    }
+
+    host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    path = parsed.pathname || "";
+
+    if (host === "media.giphy.com" || host === "i.giphy.com") {
+      match = path.match(/\/media\/([^/]+)\//i);
+      if (match && match[1]) {
+        return "https://media.giphy.com/media/" + encodeURIComponent(match[1]) + "/giphy.gif";
+      }
+    }
+
+    if (host === "giphy.com") {
+      match =
+        path.match(/\/gifs\/([^/]+)/i) ||
+        path.match(/\/stickers\/([^/]+)/i) ||
+        path.match(/\/media\/([^/]+)/i) ||
+        path.match(/\/embed\/([^/]+)/i);
+      if (match && match[1]) {
+        gifId = match[1].split("-").pop();
+        if (/^[a-z0-9]+$/i.test(gifId)) {
+          return "https://media.giphy.com/media/" + encodeURIComponent(gifId) + "/giphy.gif";
+        }
+      }
+    }
+
+    return "";
+  }
+
   function isGifFile(file, dataUrl) {
     var fileType = file && typeof file.type === "string" ? file.type.toLowerCase() : "";
     var fileName = file && typeof file.name === "string" ? file.name.toLowerCase() : "";
@@ -2339,6 +2488,28 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     return normalizeText(source);
+  }
+
+  function hasArticleBodyContent(value) {
+    var source = String(value || "");
+    var container;
+
+    if (!source) {
+      return false;
+    }
+
+    if (extractPlainTextFromHtml(source)) {
+      return true;
+    }
+
+    if (source.indexOf("<") === -1 || source.indexOf(">") === -1) {
+      return false;
+    }
+
+    container = document.createElement("div");
+    container.innerHTML = sanitizeArticleMarkup(source);
+
+    return !!container.querySelector("img[src], hr");
   }
 
   function textToParagraphHtml(value) {

@@ -1805,6 +1805,75 @@ body.menu-open .nav-links {
   padding: 0.4rem 0 4.4rem;
 }
 
+.trust-section {
+  padding: 1rem 0 4.8rem;
+}
+
+.trust-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  padding: clamp(1.75rem, 3vw, 2.75rem);
+  border: 1px solid rgba(12, 44, 61, 0.08);
+  border-radius: var(--radius-xl);
+  background:
+    radial-gradient(circle at 14% 18%, rgba(121, 228, 244, 0.16), transparent 42%),
+    radial-gradient(circle at 88% 82%, rgba(255, 211, 95, 0.18), transparent 46%),
+    linear-gradient(155deg, #ffffff 0%, #f3fafe 100%);
+  box-shadow: var(--shadow-lg);
+}
+
+.trust-badge-frame {
+  margin: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.trust-badge-image {
+  width: min(100%, 320px);
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 18px 36px rgba(7, 28, 39, 0.22));
+}
+
+.trust-label {
+  margin: 0 0 0.6rem;
+  font-family: "Space Grotesk", "Inter", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cyan-strong);
+}
+
+.trust-title {
+  margin: 0 0 0.9rem;
+  font-size: clamp(1.7rem, 3.4vw, 2.4rem);
+  line-height: 1.1;
+  color: var(--text-dark);
+}
+
+.trust-text {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 1.02rem;
+  line-height: 1.7;
+  color: var(--text-body);
+}
+
+@media (max-width: 720px) {
+  .trust-shell {
+    grid-template-columns: 1fr;
+    text-align: center;
+    gap: 1.75rem;
+  }
+
+  .trust-text {
+    margin-inline: auto;
+  }
+}
+
 .services-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3341,6 +3410,18 @@ body.menu-open .nav-links {
   grid-column: 1 / -1;
 }
 
+.article-editor-url-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: stretch;
+}
+
+.article-editor-url-row .blog-button {
+  min-height: 3rem;
+  white-space: nowrap;
+}
+
 .article-editor-toolbar-shell {
   margin-top: 1rem;
   padding: 1rem;
@@ -3590,11 +3671,17 @@ body.menu-open .nav-links {
 
 .editor-image-controls {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
   justify-content: flex-start;
 }
 
 .editor-image-button {
   width: auto;
+}
+
+.editor-image-url-row {
+  flex: 1 1 320px;
 }
 
 .article-editor-blocks {
@@ -3656,6 +3743,10 @@ body.menu-open .nav-links {
   .article-layout-two-column,
   .editor-block-surface--columns,
   .article-editor-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .article-editor-url-row {
     grid-template-columns: 1fr;
   }
 
