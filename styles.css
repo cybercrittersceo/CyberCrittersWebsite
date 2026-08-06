@@ -3855,6 +3855,7 @@ body.menu-open .nav-links {
   display: flex;
   align-items: center;
   gap: 0.85rem;
+  flex-wrap: wrap;
 }
 
 .social-links a {
@@ -3880,6 +3881,31 @@ body.menu-open .nav-links {
   width: auto;
   height: 1.2rem;
   object-fit: contain;
+}
+
+.social-icon--coffee {
+  height: 1.45rem;
+}
+
+.social-links .social-link--coffee {
+  width: auto;
+  min-width: 11.2rem;
+  grid-template-columns: auto auto;
+  grid-auto-flow: column;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  color: #ffdd66;
+  text-decoration: none;
+}
+
+.social-label {
+  font-family: "Silkscreen", "Courier New", monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-shadow: 0 0 6px rgba(255, 221, 102, 0.35);
 }
 
 .footer-inner {
