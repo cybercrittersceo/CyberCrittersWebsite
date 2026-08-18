@@ -3898,6 +3898,28 @@ body.menu-open .nav-links {
   text-decoration: none;
 }
 
+.social-icon--volunteer {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: none;
+  color: inherit;
+}
+
+.social-links .social-link--volunteer {
+  width: auto;
+  min-width: 11.6rem;
+  grid-template-columns: auto auto;
+  grid-auto-flow: column;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  color: #8ab4ff;
+  text-decoration: none;
+}
+
+.social-link--volunteer .social-label {
+  text-shadow: 0 0 6px rgba(138, 180, 255, 0.45);
+}
+
 .social-label {
   font-family: "Silkscreen", "Courier New", monospace;
   font-size: 0.8rem;
@@ -4282,6 +4304,10 @@ body.menu-open .nav-links {
   .footer-copy {
     align-items: center;
     text-align: center;
+  }
+
+  .social-links {
+    justify-content: center;
   }
 
   .hero-mission {
