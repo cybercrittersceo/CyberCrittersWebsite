@@ -10,6 +10,29 @@ document.addEventListener("DOMContentLoaded", function () {
   var BLOG_UNLOCK_KEY = "cybercritters_blog_admin_unlocked";
   var BLOG_PUBLISH_TOKEN_KEY = "cybercritters_github_publish_token";
   var ARTICLE_DRAFT_STORAGE_KEY = "cybercritters_article_draft_v3";
+  // Shared comment backend. Fill both values in to store comments in Firestore
+  // so every visitor sees the same conversation; leave them blank and comments
+  // stay in the visitor's own browser (handy for local testing).
+  // Setup steps live in FIREBASE_COMMENTS.md.
+  var COMMENTS_REMOTE_CONFIG = {
+    projectId: "",
+    apiKey: ""
+  };
+  var COMMENTS_COLLECTION = "comments";
+  var COMMENTS_STORAGE_KEY = "cybercritters_article_comments";
+  var COMMENT_AUTH_KEY = "cybercritters_comment_auth";
+  var COMMENT_IDENTITY_KEY = "cybercritters_anon_identity";
+  var COMMENT_MAX_LENGTH = 1500;
+  var COMMENT_NAME_ADJECTIVES = [
+    "Curious", "Silent", "Brave", "Clever", "Sunny", "Swift", "Cosmic", "Wandering",
+    "Cheerful", "Quantum", "Pixel", "Neon", "Mellow", "Bold", "Lucky", "Rambling",
+    "Stellar", "Witty", "Zesty", "Nimble"
+  ];
+  var COMMENT_NAME_CRITTERS = [
+    "Otter", "Gecko", "Falcon", "Badger", "Panda", "Moth", "Lynx", "Heron",
+    "Beetle", "Raccoon", "Ferret", "Puffin", "Wombat", "Cricket", "Newt", "Tapir",
+    "Marmot", "Axolotl", "Hedgehog", "Sparrow"
+  ];
   var BLOG_REMOTE_CONFIG = {
     owner: "CyberCrittersCEO",
     repo: "CyberCrittersWebsite",
@@ -23,6 +46,8 @@ document.addEventListener("DOMContentLoaded", function () {
   var fallbackTips = [];
   var fallbackUnlocked = false;
   var fallbackDraft = null;
+  var fallbackComments = [];
+  var fallbackIdentity = null;
   var dateFormatter =
     typeof Intl !== "undefined" && Intl.DateTimeFormat
       ? new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric" })
@@ -1915,7 +1940,798 @@ document.addEventListener("DOMContentLoaded", function () {
       card.appendChild(bodyEl);
 
       shell.appendChild(card);
+
+      renderArticleComments(shell, articleId);
     }).catch(renderNotFound);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Anonymous article comments
+   *
+   * Visitors never sign in. On their first visit the browser mints a random
+   * critter nickname plus a private author key; the key is what proves a
+   * comment belongs to them, so they can delete their own posts. Site admins
+   * (unlocked with the blog password) can delete any comment.
+   *
+   * Storage goes through commentsStore so the browser-only backing can later
+   * be swapped for a shared backend without touching the rendering code.
+   * ------------------------------------------------------------------- */
+
+  function renderArticleComments(shell, articleId) {
+    resolveCommentIdentity().then(function (identity) {
+      buildArticleComments(shell, articleId, identity);
+    }).catch(function () {
+      // Signing in anonymously failed, so posting would fail too. Say so
+      // rather than showing a composer that cannot work.
+      var notice = document.createElement("section");
+      notice.className = "article-comments";
+      notice.innerHTML =
+        '<h2 class="article-comments-title">Share your thoughts</h2>' +
+        '<p class="article-comments-identity">Comments are unavailable right now. Please try again later.</p>';
+      shell.appendChild(notice);
+    });
+  }
+
+  function buildArticleComments(shell, articleId, identity) {
+    var section = document.createElement("section");
+    var heading = document.createElement("h2");
+    var identityLine = document.createElement("p");
+    var identityName = document.createElement("strong");
+    var form = document.createElement("form");
+    var textarea = document.createElement("textarea");
+    var composer = document.createElement("div");
+    var composerFields = document.createElement("div");
+    var formRow = document.createElement("div");
+    var submit = document.createElement("button");
+    var feedback = document.createElement("p");
+    var list = document.createElement("ul");
+
+    section.className = "article-comments";
+    section.setAttribute("aria-labelledby", "article-comments-title");
+
+    heading.className = "article-comments-title";
+    heading.id = "article-comments-title";
+    heading.textContent = "Share your thoughts";
+    section.appendChild(heading);
+
+    identityLine.className = "article-comments-identity";
+    identityLine.appendChild(document.createTextNode("You are posting anonymously as "));
+    identityName.textContent = identity.name;
+    identityLine.appendChild(identityName);
+    identityLine.appendChild(document.createTextNode("."));
+    section.appendChild(identityLine);
+
+    if (getUnlockedState() && commentsBackendEnabled()) {
+      var moderatorLine = document.createElement("p");
+      var moderatorId = document.createElement("code");
+      moderatorLine.className = "article-comments-identity";
+      moderatorId.textContent = identity.key;
+      moderatorLine.appendChild(document.createTextNode("Moderator ID for this browser: "));
+      moderatorLine.appendChild(moderatorId);
+      section.appendChild(moderatorLine);
+    }
+
+    form.className = "article-comment-form";
+    form.setAttribute("novalidate", "novalidate");
+
+    composer.className = "article-comment-composer";
+    composer.appendChild(createCommentAvatar(identity.name));
+
+    composerFields.className = "article-comment-composer-fields";
+
+    textarea.className = "article-comment-input";
+    textarea.setAttribute("aria-label", "Your comment");
+    textarea.setAttribute("maxlength", String(COMMENT_MAX_LENGTH));
+    textarea.placeholder = "Write a comment\u2026";
+    composerFields.appendChild(textarea);
+
+    formRow.className = "article-comment-form-row";
+    submit.className = "blog-button";
+    submit.type = "submit";
+    submit.textContent = "Post";
+    formRow.appendChild(submit);
+    composerFields.appendChild(formRow);
+    composer.appendChild(composerFields);
+    form.appendChild(composer);
+
+    feedback.className = "blog-feedback";
+    feedback.setAttribute("role", "status");
+    feedback.hidden = true;
+    form.appendChild(feedback);
+    section.appendChild(form);
+
+    list.className = "article-comment-list";
+    section.appendChild(list);
+
+    shell.appendChild(section);
+
+    function renderList(comments) {
+      list.innerHTML = "";
+
+      comments.forEach(function (comment) {
+        list.appendChild(createCommentItem(comment, identity, refresh));
+      });
+    }
+
+    function refresh() {
+      return commentsStore.list(articleId).then(renderList);
+    }
+
+    form.addEventListener("submit", function (event) {
+      var text = normalizeCommentBody(textarea.value);
+
+      event.preventDefault();
+      clearFeedback(feedback);
+
+      if (!text) {
+        setFeedback(feedback, "Write something before posting.", "error");
+        textarea.focus();
+        return;
+      }
+
+      submit.disabled = true;
+
+      commentsStore.add({
+        id: createCommentId(),
+        articleId: articleId,
+        author: identity.name,
+        authorKey: identity.key,
+        body: text,
+        isoDate: new Date().toISOString()
+      }).then(function () {
+        textarea.value = "";
+        setFeedback(feedback, "Comment posted.", "success");
+        return refresh();
+      }).catch(function (error) {
+        setFeedback(feedback, getPublishErrorMessage(error, "Your comment could not be saved."), "error");
+      }).then(function () {
+        submit.disabled = false;
+      });
+    });
+
+    refresh();
+  }
+
+  function createCommentItem(comment, identity, refresh) {
+    var item = document.createElement("li");
+    var main = document.createElement("div");
+    var bubbleRow = document.createElement("div");
+    var bubble = document.createElement("div");
+    var author = document.createElement("p");
+    var bodyEl = document.createElement("p");
+    var meta = document.createElement("div");
+    var date = document.createElement("time");
+    var isOwn = comment.authorKey === identity.key;
+    var isAdmin = getUnlockedState();
+    var badge;
+
+    item.className = "article-comment";
+    item.appendChild(createCommentAvatar(comment.author));
+
+    main.className = "article-comment-main";
+    bubbleRow.className = "article-comment-bubble-row";
+    bubble.className = "article-comment-bubble";
+
+    author.className = "article-comment-author";
+    author.textContent = comment.author;
+
+    if (isOwn) {
+      badge = document.createElement("span");
+      badge.className = "article-comment-badge";
+      badge.textContent = "You";
+      author.appendChild(document.createTextNode(" "));
+      author.appendChild(badge);
+    }
+
+    bubble.appendChild(author);
+
+    // textContent (never innerHTML) keeps visitor-written markup inert.
+    bodyEl.className = "article-comment-body";
+    bodyEl.textContent = comment.body;
+    bubble.appendChild(bodyEl);
+    bubbleRow.appendChild(bubble);
+
+    if (isOwn || isAdmin) {
+      bubbleRow.appendChild(createCommentMenu(comment, identity, isOwn, refresh));
+    }
+
+    main.appendChild(bubbleRow);
+
+    meta.className = "article-comment-meta";
+    date.className = "article-comment-date";
+    date.textContent = formatRelativeTime(comment.isoDate);
+    date.setAttribute("datetime", comment.isoDate);
+    date.title = formatDateTime(comment.isoDate);
+    meta.appendChild(date);
+    main.appendChild(meta);
+
+    item.appendChild(main);
+
+    return item;
+  }
+
+  // The delete control lives behind a "..." menu rather than sitting on the
+  // comment, so the card reads as a conversation instead of a moderation queue.
+  function createCommentMenu(comment, identity, isOwn, refresh) {
+    var wrapper = document.createElement("div");
+    var toggle = document.createElement("button");
+    var panel = document.createElement("div");
+    var deleteItem = document.createElement("button");
+
+    wrapper.className = "article-comment-menu";
+
+    toggle.type = "button";
+    toggle.className = "article-comment-menu-toggle";
+    toggle.setAttribute("aria-haspopup", "true");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Comment options");
+    toggle.innerHTML =
+      '<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">' +
+      '<circle cx="4" cy="10" r="1.7" /><circle cx="10" cy="10" r="1.7" /><circle cx="16" cy="10" r="1.7" />' +
+      "</svg>";
+
+    panel.className = "article-comment-menu-panel";
+    panel.hidden = true;
+
+    deleteItem.type = "button";
+    deleteItem.className = "article-comment-menu-item article-comment-menu-item--danger";
+    deleteItem.textContent = isOwn ? "Delete" : "Delete as admin";
+    panel.appendChild(deleteItem);
+
+    function closeMenu() {
+      panel.hidden = true;
+      toggle.setAttribute("aria-expanded", "false");
+      document.removeEventListener("click", onDocumentClick, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    }
+
+    function onDocumentClick(event) {
+      if (!wrapper.contains(event.target)) { closeMenu(); }
+    }
+
+    function onKeyDown(event) {
+      if (event.key === "Escape" || event.key === "Esc") {
+        closeMenu();
+        toggle.focus();
+      }
+    }
+
+    function openMenu() {
+      // Only one comment menu stays open at a time.
+      closeOpenCommentMenus();
+      panel.hidden = false;
+      toggle.setAttribute("aria-expanded", "true");
+      document.addEventListener("click", onDocumentClick, true);
+      document.addEventListener("keydown", onKeyDown, true);
+      deleteItem.focus();
+    }
+
+    toggle.addEventListener("click", function (event) {
+      event.stopPropagation();
+      if (panel.hidden) { openMenu(); } else { closeMenu(); }
+    });
+
+    deleteItem.addEventListener("click", function () {
+      var confirmMessage = isOwn
+        ? "Delete your comment? This cannot be undone."
+        : "Delete this visitor's comment? This cannot be undone.";
+
+      if (!window.confirm(confirmMessage)) {
+        closeMenu();
+        return;
+      }
+
+      deleteItem.disabled = true;
+
+      commentsStore.remove(comment.id, identity, getUnlockedState()).then(function () {
+        closeMenu();
+        return refresh();
+      }).catch(function () {
+        deleteItem.disabled = false;
+        closeMenu();
+        window.alert("That comment could not be deleted.");
+      });
+    });
+
+    wrapper.appendChild(toggle);
+    wrapper.appendChild(panel);
+
+    return wrapper;
+  }
+
+  function closeOpenCommentMenus() {
+    var openToggles = document.querySelectorAll('.article-comment-menu-toggle[aria-expanded="true"]');
+
+    Array.prototype.forEach.call(openToggles, function (openToggle) {
+      openToggle.click();
+    });
+  }
+
+  function createCommentAvatar(name) {
+    var avatar = document.createElement("span");
+
+    avatar.className = "article-comment-avatar";
+    avatar.setAttribute("aria-hidden", "true");
+    avatar.style.setProperty("--avatar-hue", String(hashToHue(name)));
+    avatar.textContent = getCommentInitials(name);
+
+    return avatar;
+  }
+
+  function getCommentInitials(name) {
+    var capitals = String(name || "").replace(/[^A-Za-z]/g, "").match(/[A-Z]/g);
+
+    if (capitals && capitals.length >= 2) {
+      return capitals[0] + capitals[1];
+    }
+
+    return String(name || "?").slice(0, 2).toUpperCase();
+  }
+
+  function hashToHue(value) {
+    var text = String(value || "");
+    var hash = 0;
+    var index;
+
+    for (index = 0; index < text.length; index += 1) {
+      hash = (hash * 31 + text.charCodeAt(index)) % 360;
+    }
+
+    return hash;
+  }
+
+  function formatRelativeTime(isoString) {
+    var parsedDate = new Date(isoString);
+    var seconds;
+    var minutes;
+    var hours;
+    var days;
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return "a recent moment";
+    }
+
+    seconds = Math.max(0, Math.round((Date.now() - parsedDate.getTime()) / 1000));
+
+    if (seconds < 60) { return "Just now"; }
+
+    minutes = Math.floor(seconds / 60);
+    if (minutes < 60) { return minutes + "m"; }
+
+    hours = Math.floor(minutes / 60);
+    if (hours < 24) { return hours + "h"; }
+
+    days = Math.floor(hours / 24);
+    if (days < 7) { return days + "d"; }
+
+    return formatDate(parsedDate);
+  }
+
+  /* ---------------------------------------------------------------------
+   * Shared comment backend (Firebase Firestore over REST, no SDK)
+   *
+   * Visitors are signed in with Firebase Anonymous Auth. That is invisible
+   * to them -- no prompt, no account -- but it hands every browser a stable
+   * uid the security rules can check, so "only the author may delete this"
+   * is enforced by the server rather than merely hidden in the UI.
+   * ------------------------------------------------------------------- */
+
+  function commentsBackendEnabled() {
+    return !!(COMMENTS_REMOTE_CONFIG.projectId && COMMENTS_REMOTE_CONFIG.apiKey);
+  }
+
+  function firestoreDocumentsUrl(suffix) {
+    return (
+      "https://firestore.googleapis.com/v1/projects/" +
+      encodeURIComponent(COMMENTS_REMOTE_CONFIG.projectId) +
+      "/databases/(default)/documents" +
+      (suffix || "")
+    );
+  }
+
+  function getStoredCommentAuth() {
+    var raw;
+    var parsed;
+
+    if (!canUseLocalStorage) { return null; }
+
+    try {
+      raw = window.localStorage.getItem(COMMENT_AUTH_KEY);
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      return null;
+    }
+
+    if (!parsed || typeof parsed.refreshToken !== "string" || typeof parsed.uid !== "string") {
+      return null;
+    }
+
+    return parsed;
+  }
+
+  function storeCommentAuth(auth) {
+    if (!canUseLocalStorage) { return; }
+
+    try {
+      window.localStorage.setItem(
+        COMMENT_AUTH_KEY,
+        JSON.stringify({ refreshToken: auth.refreshToken, uid: auth.uid })
+      );
+    } catch (error) {}
+  }
+
+  // Cached access token for this page view; Firebase ID tokens last an hour.
+  var commentAuthSession = null;
+  var commentAuthPending = null;
+
+  function getCommentAuth() {
+    var stored;
+
+    if (commentAuthSession && commentAuthSession.expiresAt > Date.now() + 60000) {
+      return Promise.resolve(commentAuthSession);
+    }
+
+    if (commentAuthPending) { return commentAuthPending; }
+
+    stored = getStoredCommentAuth();
+
+    commentAuthPending = (stored ? refreshCommentAuth(stored) : Promise.reject(new Error("no token")))
+      .catch(function () {
+        // No usable refresh token yet (or it was revoked) - mint a new
+        // anonymous identity for this browser.
+        return signUpAnonymously();
+      })
+      .then(function (auth) {
+        commentAuthSession = auth;
+        commentAuthPending = null;
+        storeCommentAuth(auth);
+        return auth;
+      })
+      .catch(function (error) {
+        commentAuthPending = null;
+        throw error;
+      });
+
+    return commentAuthPending;
+  }
+
+  function signUpAnonymously() {
+    return window.fetch(
+      "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" +
+        encodeURIComponent(COMMENTS_REMOTE_CONFIG.apiKey),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnSecureToken: true })
+      }
+    ).then(function (response) {
+      if (!response.ok) {
+        throw new Error("Anonymous sign-in was refused.");
+      }
+      return response.json();
+    }).then(function (data) {
+      return {
+        idToken: data.idToken,
+        refreshToken: data.refreshToken,
+        uid: data.localId,
+        expiresAt: Date.now() + Number(data.expiresIn || 3600) * 1000
+      };
+    });
+  }
+
+  function refreshCommentAuth(stored) {
+    return window.fetch(
+      "https://securetoken.googleapis.com/v1/token?key=" +
+        encodeURIComponent(COMMENTS_REMOTE_CONFIG.apiKey),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body:
+          "grant_type=refresh_token&refresh_token=" +
+          encodeURIComponent(stored.refreshToken)
+      }
+    ).then(function (response) {
+      if (!response.ok) {
+        throw new Error("Could not refresh the anonymous session.");
+      }
+      return response.json();
+    }).then(function (data) {
+      return {
+        idToken: data.id_token,
+        refreshToken: data.refresh_token,
+        uid: data.user_id || stored.uid,
+        expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000
+      };
+    });
+  }
+
+  function firestoreRequest(suffix, options) {
+    return getCommentAuth().then(function (auth) {
+      var settings = options || {};
+      var headers = { "Content-Type": "application/json" };
+
+      headers.Authorization = "Bearer " + auth.idToken;
+
+      return window.fetch(
+        firestoreDocumentsUrl(suffix) +
+          (suffix.indexOf("?") === -1 ? "?" : "&") +
+          "key=" + encodeURIComponent(COMMENTS_REMOTE_CONFIG.apiKey),
+        {
+          method: settings.method || "GET",
+          headers: headers,
+          body: settings.body ? JSON.stringify(settings.body) : undefined
+        }
+      );
+    }).then(function (response) {
+      if (response.status === 403) {
+        throw new Error("The comment database rejected that action.");
+      }
+
+      if (!response.ok) {
+        throw new Error("The comment database is not reachable right now.");
+      }
+
+      return response.status === 200 ? response.json() : null;
+    });
+  }
+
+  // Every field we store is a plain string, so the Firestore value wrappers
+  // stay trivial.
+  function toFirestoreFields(data) {
+    var fields = {};
+
+    Object.keys(data).forEach(function (key) {
+      fields[key] = { stringValue: String(data[key] == null ? "" : data[key]) };
+    });
+
+    return fields;
+  }
+
+  function fromFirestoreDocument(document) {
+    var fields = (document && document.fields) || {};
+    var parsed = {};
+
+    Object.keys(fields).forEach(function (key) {
+      parsed[key] = typeof fields[key].stringValue === "string" ? fields[key].stringValue : "";
+    });
+
+    parsed.id = String((document && document.name) || "").split("/").pop();
+
+    return parsed;
+  }
+
+  function fetchRemoteComments(articleId) {
+    return firestoreRequest(":runQuery", {
+      method: "POST",
+      body: {
+        structuredQuery: {
+          from: [{ collectionId: COMMENTS_COLLECTION }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: "articleId" },
+              op: "EQUAL",
+              value: { stringValue: articleId }
+            }
+          },
+          limit: 500
+        }
+      }
+    }).then(function (rows) {
+      var comments = [];
+
+      (rows || []).forEach(function (row) {
+        if (row && row.document) {
+          comments.push(fromFirestoreDocument(row.document));
+        }
+      });
+
+      return comments.filter(isValidComment);
+    });
+  }
+
+  function createRemoteComment(comment) {
+    return firestoreRequest(
+      "/" + COMMENTS_COLLECTION + "?documentId=" + encodeURIComponent(comment.id),
+      {
+        method: "POST",
+        body: {
+          fields: toFirestoreFields({
+            articleId: comment.articleId,
+            author: comment.author,
+            authorKey: comment.authorKey,
+            body: comment.body,
+            isoDate: comment.isoDate
+          })
+        }
+      }
+    );
+  }
+
+  function deleteRemoteComment(commentId) {
+    return firestoreRequest("/" + COMMENTS_COLLECTION + "/" + encodeURIComponent(commentId), {
+      method: "DELETE"
+    });
+  }
+
+  var commentsStore = {
+    list: function (articleId) {
+      var loader = commentsBackendEnabled()
+        ? fetchRemoteComments(articleId)
+        : Promise.resolve(readStoredComments().filter(function (comment) {
+            return comment.articleId === articleId;
+          }));
+
+      return loader.then(function (comments) {
+        // Newest first. Sorting here keeps Firestore from needing a
+        // composite index for the articleId filter.
+        return comments.slice().sort(function (a, b) {
+          return new Date(b.isoDate).getTime() - new Date(a.isoDate).getTime();
+        });
+      });
+    },
+
+    add: function (comment) {
+      var comments;
+
+      if (commentsBackendEnabled()) {
+        return createRemoteComment(comment).then(function () {
+          return comment;
+        });
+      }
+
+      comments = readStoredComments();
+      comments.push(comment);
+
+      if (!writeStoredComments(comments)) {
+        return Promise.reject(new Error("This browser is not allowing comments to be stored."));
+      }
+
+      return Promise.resolve(comment);
+    },
+
+    remove: function (commentId, identity, isAdmin) {
+      var comments;
+      var target = null;
+      var remaining;
+
+      // With the shared backend the security rules are the real gate: they
+      // only allow a delete from the comment's author or a listed moderator.
+      if (commentsBackendEnabled()) {
+        return deleteRemoteComment(commentId);
+      }
+
+      comments = readStoredComments();
+
+      comments.forEach(function (comment) {
+        if (comment.id === commentId) { target = comment; }
+      });
+
+      if (!target) {
+        return Promise.reject(new Error("That comment no longer exists."));
+      }
+
+      if (!isAdmin && target.authorKey !== identity.key) {
+        return Promise.reject(new Error("You can only delete your own comments."));
+      }
+
+      remaining = comments.filter(function (comment) {
+        return comment.id !== commentId;
+      });
+
+      if (!writeStoredComments(remaining)) {
+        return Promise.reject(new Error("This browser is not allowing comments to be stored."));
+      }
+
+      return Promise.resolve(true);
+    }
+  };
+
+  function readStoredComments() {
+    return getStoredItems(COMMENTS_STORAGE_KEY, fallbackComments, isValidComment);
+  }
+
+  function writeStoredComments(comments) {
+    return saveStoredItems(COMMENTS_STORAGE_KEY, comments, fallbackComments);
+  }
+
+  function isValidComment(comment) {
+    return (
+      !!comment &&
+      typeof comment.id === "string" &&
+      typeof comment.articleId === "string" &&
+      typeof comment.author === "string" &&
+      typeof comment.authorKey === "string" &&
+      typeof comment.body === "string" &&
+      typeof comment.isoDate === "string"
+    );
+  }
+
+  function normalizeCommentBody(value) {
+    // Collapse runaway blank lines but keep the visitor's own paragraphing.
+    return String(value || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, COMMENT_MAX_LENGTH);
+  }
+
+  function resolveCommentIdentity() {
+    var identity = getCommentIdentity();
+
+    if (!commentsBackendEnabled()) {
+      return Promise.resolve(identity);
+    }
+
+    return getCommentAuth().then(function (auth) {
+      if (identity.key !== auth.uid) {
+        identity.key = auth.uid;
+        writeCommentIdentity(identity);
+      }
+
+      return identity;
+    });
+  }
+
+  function getCommentIdentity() {
+    var stored = readCommentIdentity();
+    var identity;
+
+    if (stored) { return stored; }
+
+    identity = { name: buildAnonymousName(), key: createCommentId() };
+    writeCommentIdentity(identity);
+    return identity;
+  }
+
+  function readCommentIdentity() {
+    var raw;
+    var parsed;
+
+    if (!canUseLocalStorage) {
+      return fallbackIdentity;
+    }
+
+    try {
+      raw = window.localStorage.getItem(COMMENT_IDENTITY_KEY);
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      return null;
+    }
+
+    if (!parsed || typeof parsed.name !== "string" || typeof parsed.key !== "string") {
+      return null;
+    }
+
+    return parsed;
+  }
+
+  function writeCommentIdentity(identity) {
+    if (!canUseLocalStorage) {
+      fallbackIdentity = identity;
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(COMMENT_IDENTITY_KEY, JSON.stringify(identity));
+    } catch (error) {
+      fallbackIdentity = identity;
+    }
+  }
+
+  function buildAnonymousName() {
+    var adjective = COMMENT_NAME_ADJECTIVES[Math.floor(Math.random() * COMMENT_NAME_ADJECTIVES.length)];
+    var critter = COMMENT_NAME_CRITTERS[Math.floor(Math.random() * COMMENT_NAME_CRITTERS.length)];
+    var suffix = String(Math.floor(Math.random() * 9000) + 1000);
+
+    return adjective + critter + suffix;
+  }
+
+  function createCommentId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+
+    return "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
   }
 
   function supportsStorage(storageName) {
