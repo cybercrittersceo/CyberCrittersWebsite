@@ -2132,7 +2132,7 @@ document.addEventListener("DOMContentLoaded", function () {
     bubbleRow.appendChild(bubble);
 
     if (isOwn || isAdmin) {
-      bubbleRow.appendChild(createCommentMenu(comment, identity, isOwn, refresh));
+      bubbleRow.appendChild(createCommentMenu(comment, identity, isOwn, refresh, startEditing));
     }
 
     main.appendChild(bubbleRow);
@@ -2143,7 +2143,100 @@ document.addEventListener("DOMContentLoaded", function () {
     date.setAttribute("datetime", comment.isoDate);
     date.title = formatDateTime(comment.isoDate);
     meta.appendChild(date);
+
+    if (comment.editedAt) {
+      var editedMark = document.createElement("span");
+      editedMark.className = "article-comment-edited";
+      editedMark.textContent = "edited";
+      editedMark.title = "Edited " + formatDateTime(comment.editedAt);
+      meta.appendChild(editedMark);
+    }
+
     main.appendChild(meta);
+
+    // Swaps the bubble for an inline editor. Cancelling restores the original
+    // text, so a mistyped edit never destroys what was there.
+    function startEditing() {
+      var editForm = document.createElement("form");
+      var editInput = document.createElement("textarea");
+      var editRow = document.createElement("div");
+      var saveButton = document.createElement("button");
+      var cancelButton = document.createElement("button");
+
+      if (item.classList.contains("is-editing")) { return; }
+      item.classList.add("is-editing");
+
+      editForm.className = "article-comment-edit-form";
+      editForm.setAttribute("novalidate", "novalidate");
+
+      editInput.className = "article-comment-input";
+      editInput.setAttribute("aria-label", "Edit your comment");
+      editInput.setAttribute("maxlength", String(COMMENT_MAX_LENGTH));
+      editInput.value = comment.body;
+      editForm.appendChild(editInput);
+
+      editRow.className = "article-comment-edit-actions";
+
+      saveButton.type = "submit";
+      saveButton.className = "blog-button article-comment-edit-save";
+      saveButton.textContent = "Save";
+
+      cancelButton.type = "button";
+      cancelButton.className = "article-comment-edit-cancel";
+      cancelButton.textContent = "Cancel";
+
+      editRow.appendChild(cancelButton);
+      editRow.appendChild(saveButton);
+      editForm.appendChild(editRow);
+
+      function stopEditing() {
+        item.classList.remove("is-editing");
+        editForm.remove();
+        bubbleRow.hidden = false;
+        meta.hidden = false;
+      }
+
+      cancelButton.addEventListener("click", stopEditing);
+
+      editInput.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" || event.key === "Esc") {
+          event.preventDefault();
+          stopEditing();
+        }
+      });
+
+      editForm.addEventListener("submit", function (event) {
+        var nextBody = normalizeCommentBody(editInput.value);
+
+        event.preventDefault();
+
+        if (!nextBody) {
+          editInput.focus();
+          return;
+        }
+
+        if (nextBody === comment.body) {
+          stopEditing();
+          return;
+        }
+
+        saveButton.disabled = true;
+
+        commentsStore.update(comment.id, identity, nextBody).then(function () {
+          stopEditing();
+          return refresh();
+        }).catch(function (error) {
+          saveButton.disabled = false;
+          window.alert(getPublishErrorMessage(error, "That edit could not be saved."));
+        });
+      });
+
+      bubbleRow.hidden = true;
+      meta.hidden = true;
+      main.insertBefore(editForm, meta);
+      editInput.focus();
+      editInput.setSelectionRange(editInput.value.length, editInput.value.length);
+    }
 
     item.appendChild(main);
 
@@ -2152,10 +2245,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // The delete control lives behind a "..." menu rather than sitting on the
   // comment, so the card reads as a conversation instead of a moderation queue.
-  function createCommentMenu(comment, identity, isOwn, refresh) {
+  function createCommentMenu(comment, identity, isOwn, refresh, onEdit) {
     var wrapper = document.createElement("div");
     var toggle = document.createElement("button");
     var panel = document.createElement("div");
+    var editItem;
     var deleteItem = document.createElement("button");
 
     wrapper.className = "article-comment-menu";
@@ -2172,6 +2266,20 @@ document.addEventListener("DOMContentLoaded", function () {
 
     panel.className = "article-comment-menu-panel";
     panel.hidden = true;
+
+    // Only the author may reword a comment; a moderator can remove it but
+    // must not put words in someone else's mouth.
+    if (isOwn) {
+      editItem = document.createElement("button");
+      editItem.type = "button";
+      editItem.className = "article-comment-menu-item";
+      editItem.textContent = "Edit";
+      editItem.addEventListener("click", function () {
+        closeMenu();
+        onEdit();
+      });
+      panel.appendChild(editItem);
+    }
 
     deleteItem.type = "button";
     deleteItem.className = "article-comment-menu-item article-comment-menu-item--danger";
@@ -2203,7 +2311,7 @@ document.addEventListener("DOMContentLoaded", function () {
       toggle.setAttribute("aria-expanded", "true");
       document.addEventListener("click", onDocumentClick, true);
       document.addEventListener("keydown", onKeyDown, true);
-      deleteItem.focus();
+      (editItem || deleteItem).focus();
     }
 
     toggle.addEventListener("click", function (event) {
@@ -2547,6 +2655,19 @@ document.addEventListener("DOMContentLoaded", function () {
     );
   }
 
+  function updateRemoteComment(commentId, body, editedAt) {
+    // An update mask keeps this to the two editable fields, so the security
+    // rules can hold author, articleId and isoDate immutable.
+    return firestoreRequest(
+      "/" + COMMENTS_COLLECTION + "/" + encodeURIComponent(commentId) +
+        "?updateMask.fieldPaths=body&updateMask.fieldPaths=editedAt",
+      {
+        method: "PATCH",
+        body: { fields: toFirestoreFields({ body: body, editedAt: editedAt }) }
+      }
+    );
+  }
+
   function deleteRemoteComment(commentId) {
     return firestoreRequest("/" + COMMENTS_COLLECTION + "/" + encodeURIComponent(commentId), {
       method: "DELETE"
@@ -2587,6 +2708,42 @@ document.addEventListener("DOMContentLoaded", function () {
       }
 
       return Promise.resolve(comment);
+    },
+
+    update: function (commentId, identity, body) {
+      var editedAt = new Date().toISOString();
+      var comments;
+      var target = null;
+      var saved = false;
+
+      if (commentsBackendEnabled()) {
+        return updateRemoteComment(commentId, body, editedAt);
+      }
+
+      comments = readStoredComments();
+
+      comments.forEach(function (comment) {
+        if (comment.id === commentId) { target = comment; }
+      });
+
+      if (!target) {
+        return Promise.reject(new Error("That comment no longer exists."));
+      }
+
+      // Editing is author-only; admins may remove a comment but never reword it.
+      if (target.authorKey !== identity.key) {
+        return Promise.reject(new Error("You can only edit your own comments."));
+      }
+
+      target.body = body;
+      target.editedAt = editedAt;
+      saved = writeStoredComments(comments);
+
+      if (!saved) {
+        return Promise.reject(new Error("This browser is not allowing comments to be stored."));
+      }
+
+      return Promise.resolve(target);
     },
 
     remove: function (commentId, identity, isAdmin) {
@@ -2642,7 +2799,8 @@ document.addEventListener("DOMContentLoaded", function () {
       typeof comment.author === "string" &&
       typeof comment.authorKey === "string" &&
       typeof comment.body === "string" &&
-      typeof comment.isoDate === "string"
+      typeof comment.isoDate === "string" &&
+      (typeof comment.editedAt === "undefined" || typeof comment.editedAt === "string")
     );
   }
 

@@ -84,8 +84,23 @@ service cloud.firestore {
         && request.resource.data.isoDate is string
         && request.resource.data.isoDate.size() <= 40;
 
-      // Comments are never edited after posting.
-      allow update: if false;
+      // Only the author may edit, and only the wording. Author, article
+      // and original timestamp are held immutable, so an edit cannot
+      // reassign a comment or forge its age. Moderators may delete a
+      // comment but never reword it.
+      allow update: if request.auth != null
+        && request.auth.uid == resource.data.authorKey
+        && request.resource.data.keys().hasOnly(
+             ['articleId', 'author', 'authorKey', 'body', 'isoDate', 'editedAt'])
+        && request.resource.data.authorKey == resource.data.authorKey
+        && request.resource.data.articleId == resource.data.articleId
+        && request.resource.data.author == resource.data.author
+        && request.resource.data.isoDate == resource.data.isoDate
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 1500
+        && request.resource.data.editedAt is string
+        && request.resource.data.editedAt.size() <= 40;
 
       // Only the original author, or a listed moderator, may delete.
       allow delete: if request.auth != null
@@ -128,8 +143,12 @@ has over their own comments — that needs no setup.
 
 - A nickname like `CuriousOtter4821`, generated on first visit and remembered in
   that browser. Roughly 3.6 million combinations.
-- A `...` menu on their own comments only, containing **Delete**.
+- A `...` menu on their own comments, containing **Edit** and **Delete**.
 - No menu at all on anyone else's comments.
+- An edited comment is marked **edited** next to its timestamp.
+
+Moderators see **Delete as admin** on every comment, but no **Edit** — a
+moderator can remove a comment, never reword someone else's.
 
 The nickname is per browser, not per person, so the same visitor on a phone and
 a laptop will have two different names. That is unavoidable without accounts.

@@ -4475,6 +4475,12 @@ body.menu-open .nav-links {
   gap: 0.25rem;
 }
 
+/* display:flex above would otherwise beat the UA stylesheet's [hidden] rule,
+   leaving the original bubble on screen while its editor is open. */
+.article-comment-bubble-row[hidden] {
+  display: none;
+}
+
 .article-comment-bubble {
   flex: 0 1 auto;
   min-width: 0;
@@ -4624,4 +4630,54 @@ body.menu-open .nav-links {
 .article-comment-menu-item[disabled] {
   opacity: 0.55;
   cursor: progress;
+}
+
+.article-comment-edited {
+  margin-left: 0.45rem;
+  color: #9bb0bc;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: default;
+}
+
+.article-comment-edit-form {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.1rem;
+}
+
+.article-comment-edit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.article-comment-edit-save {
+  min-height: 2.1rem;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+}
+
+.article-comment-edit-save[disabled] {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.article-comment-edit-cancel {
+  padding: 0.4rem 0.8rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #5b7382;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.article-comment-edit-cancel:hover,
+.article-comment-edit-cancel:focus-visible {
+  background: rgba(12, 44, 61, 0.07);
 }
