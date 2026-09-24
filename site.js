@@ -15,8 +15,8 @@ document.addEventListener("DOMContentLoaded", function () {
   // stay in the visitor's own browser (handy for local testing).
   // Setup steps live in FIREBASE_COMMENTS.md.
   var COMMENTS_REMOTE_CONFIG = {
-    projectId: "",
-    apiKey: ""
+    projectId: "cyber-critters",
+    apiKey: "AIzaSyB2-Iw8frigF0nBV_JhJ69lUi5ckGEWwNo"
   };
   var COMMENTS_COLLECTION = "comments";
   var COMMENTS_STORAGE_KEY = "cybercritters_article_comments";
