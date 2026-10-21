@@ -564,9 +564,14 @@ document.addEventListener("DOMContentLoaded", function () {
             dateLabel: formatDate(now)
           };
 
-          next = [newTip].concat(storedTips);
           setFeedback(formFeedback, "Publishing tip to GitHub...", "success");
-          saveSharedBlogItems(BLOG_IGGY_STORAGE_KEY, next, "Publish Iggy Tip: " + caption).then(function () {
+          offloadPayloadImages(newTip, function (done, total) {
+            setFeedback(formFeedback, "Uploading image " + done + " of " + total + "\u2026", "success");
+          }).then(function (leanTip) {
+            newTip = leanTip;
+            next = [newTip].concat(storedTips);
+            return saveSharedBlogItems(BLOG_IGGY_STORAGE_KEY, next, "Publish Iggy Tip: " + caption);
+          }).then(function () {
             storedTips = next;
             if (iggyFeed) {
               iggyFeed.insertBefore(createTipCard(newTip), iggyFeed.firstChild);
@@ -1090,7 +1095,12 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         setFeedback(feedback, editingArticle ? "Saving article changes to GitHub..." : "Publishing article to GitHub...", "success");
-        loadBlogFeedItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle).then(function (storedArticles) {
+        offloadPayloadImages(articleData, function (done, total) {
+          setFeedback(feedback, "Uploading image " + done + " of " + total + "\u2026", "success");
+        }).then(function (leanArticle) {
+          articleData = leanArticle;
+          return loadBlogFeedItems(BLOG_ARTICLES_STORAGE_KEY, fallbackArticles, isValidArticle);
+        }).then(function (storedArticles) {
           var articleWasFound = false;
           var nextArticles;
 
@@ -2976,6 +2986,145 @@ document.addEventListener("DOMContentLoaded", function () {
         return [];
       }
       return items.filter(validator);
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+   * Image offloading
+   *
+   * Images used to be embedded in data/articles.json as base64 data URIs.
+   * That file reached 38 MB, and publishing it meant PUTting a ~51 MB body
+   * to the GitHub Contents API, which GitHub refuses -- so publishing broke
+   * entirely.
+   *
+   * Now each image is uploaded once as its own file under images/articles/,
+   * named by a hash of its content, and the JSON keeps only the path. The
+   * JSON stays small no matter how many articles are published, and an image
+   * reused across articles is stored once.
+   * ------------------------------------------------------------------- */
+
+  var ARTICLE_IMAGE_DIR = "images/articles/";
+  var DATA_URI_PATTERN = /data:(image\/[a-zA-Z+]+);base64,([A-Za-z0-9+/=]+)/g;
+  var IMAGE_EXTENSIONS = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/gif": "gif",
+    "image/webp": "webp",
+    "image/svg+xml": "svg",
+    "image/avif": "avif"
+  };
+
+  // Replaces every embedded image in `payload` with a repo path, uploading
+  // any the repo does not already hold. Resolves to the rewritten payload.
+  function offloadPayloadImages(payload, onProgress) {
+    var serialized = JSON.stringify(payload);
+    var matches = [];
+    var seen = {};
+    var match;
+
+    DATA_URI_PATTERN.lastIndex = 0;
+    while ((match = DATA_URI_PATTERN.exec(serialized)) !== null) {
+      if (!seen[match[0]]) {
+        seen[match[0]] = true;
+        matches.push({ uri: match[0], mime: match[1], base64: match[2] });
+      }
+    }
+
+    if (!matches.length) {
+      return Promise.resolve(payload);
+    }
+
+    return matches.reduce(function (chain, item, index) {
+      return chain.then(function () {
+        if (onProgress) {
+          onProgress(index + 1, matches.length);
+        }
+
+        return uploadArticleImage(item.mime, item.base64).then(function (path) {
+          // Split/join rather than regex: the base64 body can contain
+          // characters that would otherwise be read as regex syntax.
+          serialized = serialized.split(item.uri).join(path);
+        });
+      });
+    }, Promise.resolve()).then(function () {
+      return JSON.parse(serialized);
+    });
+  }
+
+  function uploadArticleImage(mime, base64) {
+    return sha1Hex(base64).then(function (digest) {
+      var extension = IMAGE_EXTENSIONS[String(mime).toLowerCase()] || "bin";
+      var path = ARTICLE_IMAGE_DIR + digest.slice(0, 16) + "." + extension;
+      var token = getPublishToken();
+      var apiUrl =
+        "https://api.github.com/repos/" +
+        encodeURIComponent(BLOG_REMOTE_CONFIG.owner) +
+        "/" +
+        encodeURIComponent(BLOG_REMOTE_CONFIG.repo) +
+        "/contents/" +
+        path;
+
+      if (!token) {
+        return Promise.reject(new Error("GitHub token is required to upload images."));
+      }
+
+      // Named by content hash, so a file that already exists is byte-identical
+      // and there is nothing to re-upload.
+      return window.fetch(apiUrl + "?ref=" + encodeURIComponent(BLOG_REMOTE_CONFIG.branch), {
+        cache: "no-store",
+        headers: createGitHubHeaders(token)
+      }).then(function (response) {
+        if (response.ok) {
+          return path;
+        }
+
+        if (response.status !== 404) {
+          throw new Error("GitHub could not check for an existing image.");
+        }
+
+        return window.fetch(apiUrl, {
+          method: "PUT",
+          headers: createGitHubHeaders(token),
+          body: JSON.stringify({
+            message: "Add article image " + path,
+            content: base64,
+            branch: BLOG_REMOTE_CONFIG.branch
+          })
+        }).then(function (putResponse) {
+          if (putResponse.status === 401 || putResponse.status === 403) {
+            clearPublishToken();
+            throw new Error("GitHub rejected the publishing token.");
+          }
+
+          if (putResponse.status === 422) {
+            // Another publish uploaded the same image a moment ago.
+            return path;
+          }
+
+          if (!putResponse.ok) {
+            throw new Error("GitHub could not save an image (" + putResponse.status + ").");
+          }
+
+          return path;
+        });
+      });
+    });
+  }
+
+  function sha1Hex(value) {
+    var bytes = new TextEncoder().encode(String(value));
+
+    return window.crypto.subtle.digest("SHA-1", bytes).then(function (buffer) {
+      var out = "";
+      var view = new Uint8Array(buffer);
+      var index;
+
+      for (index = 0; index < view.length; index += 1) {
+        out += view[index].toString(16).padStart(2, "0");
+      }
+
+      return out;
     });
   }
 
